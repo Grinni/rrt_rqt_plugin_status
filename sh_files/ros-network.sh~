@@ -1,0 +1,4 @@
+#!/bin/bash
+export ROS_HOSTNAME=rrt-cuda2
+# export ROS_MASTER_URI=http://rrt-beaglebone:11311
+export ROS_MASTER_URI=http://rrt-cuda2:11311

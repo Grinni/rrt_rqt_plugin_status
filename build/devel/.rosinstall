@@ -1,0 +1,2 @@
+- setup-file:
+    local-name: /home/rrt/ros_workspace/rrt_rqt_plugin_status/build/devel/setup.sh

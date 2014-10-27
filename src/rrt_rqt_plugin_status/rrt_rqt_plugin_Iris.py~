@@ -1,0 +1,366 @@
+import os
+import rospy
+import rospkg
+import time
+import roslib
+roslib.load_manifest('rrt_rqt_plugin_Iris')
+
+from qt_gui.plugin import Plugin
+from python_qt_binding import loadUi
+from python_qt_binding.QtCore import *
+from python_qt_binding.QtGui import *
+from std_msgs.msg import String
+from std_msgs.msg import Int16
+from sensor_msgs.msg import JointState
+from rrt_cmd_vel_serial.msg import Accu
+from math import pi
+
+import roslaunch
+from roslaunch.core import RLException
+
+from geometry_msgs.msg import Twist
+
+from worldmodel_msgs.srv import AddObject
+from worldmodel_msgs.msg import ObjectState
+
+
+#TODO: serial_out checken
+WAIT_PUB_SERIAL_OUT = 0.02    #waiting after pub new value at serial_out topic
+
+#rrt_rqt_plugin_status
+class RRTRqtPluginIris(Plugin):
+    
+    def __init__(self, context):
+        super(RRTRqtPluginIris, self).__init__(context)
+        self.setObjectName('RRTRqtPluginIris')
+        
+        # Process standalone plugin command-line arguments
+        from argparse import ArgumentParser
+        parser = ArgumentParser()
+        # Add argument(s) to the parser.
+        parser.add_argument("-q", "--quiet", action="store_true",
+                      dest="quiet",
+                      help="Put plugin in silent mode")
+        args, unknowns = parser.parse_known_args(context.argv())
+        if not args.quiet:
+            print 'arguments: ', args
+            print 'unknowns: ', unknowns
+        
+        self._widget = QWidget()
+        rp = rospkg.RosPack()
+        ui_file = os.path.join(rp.get_path('rrt_rqt_plugin_Iris'),
+          'resource', 'rrt_rqt_plugin_Iris.ui')
+        loadUi(ui_file,  self._widget)
+        self._widget.setObjectName('RRTRqtPluginIrisUI')
+        # Show _widget.windowTitle on left-top of each plugin (when 
+        # it's set in _widget). This is useful when you open multiple 
+        # plugins at once. Also if you open multiple instances of your 
+        # plugin at once, these lines add number to make it easy to 
+        # tell from pane to pane.
+        if context.serial_number() > 1:
+            self._widget.setWindowTitle(self._widget.windowTitle() + 
+              (' (%d)' % context.serial_number()))
+        # Add widget to the user interface
+        context.add_widget(self._widget)
+
+################################################################################
+
+        self._pub_serial_out = rospy.Publisher('serial_out', String)
+        #Publisher auf cmd_vel fuer Stopbutton
+        self._cmd_vel_publisher = rospy.Publisher('cmd_vel', Twist)
+
+######       DEF ALLGEMEIN            ##########################################        
+
+  
+          
+# ACCUS
+        self._topic_name = 'accu'
+        self.message_class = Accu
+# ACCU1
+        self._subscriber = rospy.Subscriber(
+          self._topic_name, self.message_class, self.callback_accu1)  
+        self.connect(self, SIGNAL("new_value_accu1"), self.set_ledt_accu1)           
+# ACCU2       
+        self._subscriber = rospy.Subscriber(
+          self._topic_name, self.message_class, self.callback_accu2)  
+        self.connect(self, SIGNAL("new_value_accu2"), self.set_ledt_accu2)   
+
+# CO2
+        self._topic_name = 'co2'
+        self.message_class = Int16
+        self._subscriber = rospy.Subscriber(
+          self._topic_name, self.message_class, self.callback_co2)  
+        self.connect(self, SIGNAL("new_value_co2"), self.set_ledt_co2)
+
+
+# RESET
+        #Button for resetting the system state
+        #resetPushButton = QPushButton("Reset State")       
+        self._widget.resetPushButton.pressed.connect(self.handleReset)
+        self._syscommand_pub = rospy.Publisher('syscommand', String)
+        #vbox.addWidget(resetPushButton)
+
+
+# VICTIM
+        #Pushbutton for adding a victim in front of the robot and projecting it against the wall       
+        self._widget.addVictimInFrontOfRobotPushButton.pressed.connect(self.on_add_victim_in_front_of_robot_pressed)
+        
+        self._subscriber = rospy.Subscriber('victims', String, self.callback_victim)
+        self.connect(self, SIGNAL("new_victim"), self.set_Textbox)
+
+
+
+# QR-CODE
+        #Add a Pushbutton for adding a qr_code in front of the robot and projecting it against the wall    
+   
+        self._widget.addQR_CodeInFrontOfRobotPushButton.pressed.connect(self.on_add_qr_code_in_front_of_robot_pressed)
+        
+# subscriber vom QR-Code
+        self._subscriber = rospy.Subscriber('qr_code', String, self.callback_qrCode)
+        self.connect(self, SIGNAL("new_qrCode"), self.set_Textbox)
+
+
+# HAZARD
+        #Add a Pushbutton for adding a hazard label in front of the robot and projecting it against the wall
+      
+        self._widget.addHazardInFrontOfRobotPushButton.pressed.connect(self.on_add_hazard_in_front_of_robot_pressed)
+        
+        self._subscriber = rospy.Subscriber('hazards', String, self.callback_hazard)
+        self.connect(self, SIGNAL("new_hazard"), self.set_Textbox)
+
+
+
+# STOP -Pushbutton
+        self._widget.stop_push_button.pressed.connect(self.on_stop_pressed)
+
+
+# SAVE PushButton
+        self._widget.savePushButton.pressed.connect(self.save)
+
+
+
+
+######       FKT ALLGEMEIN            ##########################################
+
+
+
+       
+#CO2
+    def callback_co2(self, data):
+      self.emit(SIGNAL("new_value_co2"), data.data)
+
+    def set_ledt_co2(self, value):
+      self._widget.ledt_co2.setText("%.2f" % float(value) +" ppm")
+      
+#ACCU1
+    def callback_accu1(self, data):
+      self.emit(SIGNAL("new_value_accu1"), data.AccuVoltage)
+
+    def set_ledt_accu1(self, value):
+      self._widget.ledt_accu1.setText("%.2f" % float(value) +" Volt")
+      
+#ACCU2
+    def callback_accu2(self, data):
+      self.emit(SIGNAL("new_value_accu2"), data.AccuPercentage)
+
+    def set_ledt_accu2(self, value):
+      self._widget.ledt_accu2.setText("%.2f" % float(value) +" Volt")
+
+
+
+# save -> Skript ausfuehren
+    def save(self):
+      #ToDo: skript zum Speichern einfuegen!
+      self._widget.QR_Codes.append("save")
+
+
+
+
+# Stop-Push Button
+    def on_stop_pressed(self):
+      #self._widget.ledt_my.setText("Stop")
+     
+      # linear.x = 0 und angular.z = 0
+      twist = Twist()
+      twist.linear.x = 0
+      twist.linear.y = 0
+      twist.linear.z = 0
+      twist.angular.x = 0
+      twist.angular.y = 0
+      twist.angular.z = 0
+      self._cmd_vel_publisher.publish(twist)
+
+
+# Reset State
+    def handleReset(self):
+      tmp = String("reset")
+      self._syscommand_pub.publish(tmp)
+      #self._widget.ledt_my.setText("Reset State Pressed")
+
+
+# VICTIM
+# Add victim
+    def on_add_victim_in_front_of_robot_pressed(self):
+
+      #self._widget.ledt_my.setText("Add victim")
+            
+      try:
+          add_victim = rospy.ServiceProxy('worldmodel/add_object', AddObject)
+          
+          req = AddObject._request_class()
+          req.object.header.frame_id = 'base_link'
+          req.object.header.stamp = rospy.Time(0)
+          req.map_to_next_obstacle = True
+          req.object.info.class_id = "victim"
+          req.object.info.support = 100
+          req.object.pose.pose.position.x = 0.1
+          req.object.pose.pose.position.y = 0
+          req.object.pose.pose.position.z = 0
+          req.object.pose.pose.orientation.w = 1
+          req.object.state.state = ObjectState.CONFIRMED
+
+          resp = add_victim(req)
+            
+          status_msg = "added Victim, id = "
+          status_msg += resp.object.info.object_id
+          print(status_msg)
+
+          self._widget.QR_Codes.append(status_msg)
+            
+            #self._task_id = resp.object.info.object_id
+            #self._victimAnswer = VictimAnswer.CONFIRM
+            #self._publish_answer()
+
+            
+            
+      except rospy.ServiceException, e:
+        #@TODO: Make this more expressive
+        print("service call failed")
+
+
+# add Victim-Positionen to Textbox 
+    def callback_victim(self, data):
+      self.emit(SIGNAL("new_victim"), data.data)
+
+
+
+# Add QR-code
+#-----rrt-fh-wels: Giuliano Roland    
+    def on_add_qr_code_in_front_of_robot_pressed(self):
+            
+        try:
+            add_qr_code = rospy.ServiceProxy('worldmodel/add_object', AddObject)
+	    
+            req = AddObject._request_class()
+            req.object.header.frame_id = 'base_link'
+            req.object.header.stamp = rospy.Time(0)
+            req.map_to_next_obstacle = True
+            req.object.info.class_id = "qrcode"
+            req.object.info.support = 100
+            req.object.pose.pose.position.x = 0.1
+            req.object.pose.pose.position.y = 0
+            req.object.pose.pose.position.z = 0
+            req.object.pose.pose.orientation.w = 1
+            req.object.state.state = ObjectState.CONFIRMED
+
+            resp = add_qr_code(req)
+            
+            status_msg = "added QR_Code, id = "
+            status_msg += resp.object.info.object_id
+            print(status_msg)
+            
+            #-----rrt-fh-wels: Giuliano Roland   
+            #self._task_id = resp.object.info.object_id
+            #self._qr_codeAnswer = QR_CodeAnswer.CONFIRM
+            #self._publish_answer()
+
+
+            self._widget.QR_Codes.append(status_msg)
+            
+        except rospy.ServiceException, e:
+	    print("QR_Code service call failed") 
+
+# write qr_code to textbox
+    def callback_qrCode(self, data):
+      self.emit(SIGNAL("new_qrCode"), data.data)
+
+    def set_Textbox(self, value):
+      self._widget.QR_Codes.append(value)
+
+#---------------------------------------------------------------------
+# Publisher fuer QR-Code-Anzeige
+
+# wenns ned eh drinnen is....
+#import rospy
+#from std_msgs.msg import String   
+# iwo am Anfang im QR-Code Client
+#pub = rospy.Publisher('qr_code', String)
+#pub = rospy.Publisher('hazards', String)
+#pub = rospy.Publisher('victims', String)
+# im QR-Code Client nachm Schreiben in die Datei
+#pub.publish(String(str))
+#--------------------------------------------------------------------
+    
+
+
+# Add hazard
+    #-----rrt-fh-wels: Giuliano Roland    
+    def on_add_hazard_in_front_of_robot_pressed(self):
+            
+        try:
+            add_hazard = rospy.ServiceProxy('worldmodel/add_object', AddObject)
+	    
+            req = AddObject._request_class()
+            req.object.header.frame_id = 'base_link'
+            req.object.header.stamp = rospy.Time(0)
+            req.map_to_next_obstacle = True
+            req.object.info.class_id = "hazard"
+            req.object.info.support = 100
+            req.object.pose.pose.position.x = 0.1
+            req.object.pose.pose.position.y = 0
+            req.object.pose.pose.position.z = 0
+            req.object.pose.pose.orientation.w = 1
+            req.object.state.state = ObjectState.CONFIRMED
+
+            resp = add_hazard(req)
+            
+            status_msg = "added Hazard Label, id = "
+            status_msg += resp.object.info.object_id
+            print(status_msg)
+
+            self._widget.QR_Codes.append(status_msg)
+            
+            #-----rrt-fh-wels: Giuliano Roland   
+            #self._task_id = resp.object.info.object_id
+            #self._hazardAnswer = HazardAnswer.CONFIRM
+            #self._publish_answer()
+            
+        except rospy.ServiceException, e:
+	    print("Hazard service call failed")
+
+# add hazard-position to textbox
+    def callback_hazard(self, data):
+      self.emit(SIGNAL("new_hazard"), data.data)
+
+
+
+   
+"""
+    def shutdown_plugin(self):
+        # TODO unregister all publishers here
+        pass
+        
+    def save_settings(self, plugin_settings, instance_settings):
+        # TODO save intrinsic configuration, usually using:
+        # instance_settings.set_value(k, v)
+        pass
+        
+    def restore_settings(self, plugin_settings, instance_settings):
+        # TODO restore intrinsic configuration, usually using:
+        # v = instance_settings.value(k)
+        pass
+        
+    #def trigger_configuration(self):
+        # Comment in to signal that the plugin has a way to configure it
+        # Usually used to open a configuration dialog
+"""        

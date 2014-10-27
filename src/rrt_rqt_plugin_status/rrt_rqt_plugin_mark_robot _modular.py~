@@ -1,0 +1,1446 @@
+import os
+import rospy
+import rospkg
+import time
+import roslib
+roslib.load_manifest('rrt_rqt_plugin_mark_robot')
+import rrt_rqt_plugin_mark_robot_save_pos
+
+
+from qt_gui.plugin import Plugin
+from python_qt_binding import loadUi
+from python_qt_binding.QtCore import *
+from python_qt_binding.QtGui import *
+from std_msgs.msg import String
+from std_msgs.msg import Int16
+from sensor_msgs.msg import JointState
+from rrt_communication.msg import Accu
+from worldmodel_msgs.srv import AddObject
+from worldmodel_msgs.msg import ObjectState
+from math import pi
+
+### LineEdit Background colours
+LEDT_COLOUR_WHITE = "QLineEdit { background-color : rgb(255, 255, 255) }"
+LEDT_COLOUR_YELLOW = "QLineEdit { background-color : rgb(255, 255, 0) }"
+LEDT_COLOUR_ORANGE = "QLineEdit { background-color : rgb(255, 170, 0) }"
+### Def. times
+#TODO: serial_out checken
+WAIT_PUB_SERIAL_OUT = 0.02    #waiting after pub new value at serial_out topic
+
+
+#TODO: FKT DEF richtig zuordnen (Allgemein/Settings)
+#TODO: Konstanten definieren!
+#TODO: Absolute Pfadangaben raus!
+#TODO: Modularisieren!
+#TODO: Hartcodierung in Code und UI vermeiden (UI default value slider und 
+#      default value Anzeige slider jeweils hart codiert. Soll aus Code kommen)
+#TODO: Konstruktor, Destruktor, self,....
+#TODO: Privater und globaler Namensraum
+
+
+class RRTRqtPluginMarkRobot(Plugin):
+    
+    def __init__(self, context):
+        super(RRTRqtPluginMarkRobot, self).__init__(context)
+        self.setObjectName('RRTRqtPluginMarkRobot')
+        
+        # Process standalone plugin command-line arguments
+        from argparse import ArgumentParser
+        parser = ArgumentParser()
+        # Add argument(s) to the parser.
+        parser.add_argument("-q", "--quiet", action="store_true",
+                      dest="quiet",
+                      help="Put plugin in silent mode")
+        args, unknowns = parser.parse_known_args(context.argv())
+        if not args.quiet:
+            print 'arguments: ', args
+            print 'unknowns: ', unknowns
+        
+        self._widget = QWidget()
+        rp = rospkg.RosPack()
+        ui_file = os.path.join(rp.get_path('rrt_rqt_plugin_mark_robot'),
+          'resource', 'rrt_rqt_plugin_mark_robot.ui')
+        loadUi(ui_file,  self._widget)
+        self._widget.setObjectName('RRTRqtPluginMarkRobotUI')
+        # Show _widget.windowTitle on left-top of each plugin (when 
+        # it's set in _widget). This is useful when you open multiple 
+        # plugins at once. Also if you open multiple instances of your 
+        # plugin at once, these lines add number to make it easy to 
+        # tell from pane to pane.
+        if context.serial_number() > 1:
+            self._widget.setWindowTitle(self._widget.windowTitle() + 
+              (' (%d)' % context.serial_number()))
+        # Add widget to the user interface
+        context.add_widget(self._widget)
+
+        self._pub_serial_out = rospy.Publisher('serial_out', String)        
+
+
+######       INIT PLUGIN              ##########################################
+
+        self._widget.ledt_gripper_open_move.setText(
+          "%.1f" % (110.0 + self._widget.hsld_gripper_offset_move.value()))
+        self._widget.ledt_gripper_close_move.setText(
+          "%.1f" % (90.0 + self._widget.hsld_gripper_offset_move.value()))
+        self._widget.ledt_gripper_open_move_2.setText(
+          "%.1f" % (110.0 + self._widget.hsld_gripper_offset_move.value()))
+        self._widget.ledt_gripper_close_move_2.setText(
+          "%.1f" % (90.0 + self._widget.hsld_gripper_offset_move.value()))        
+
+######       DEF ALLGEMEIN            ##########################################
+#COUNTDOWN
+        self.timerCountdown = QTimer()
+        self.timerCountdown.setInterval(1000)
+        self.timerCountdown.setSingleShot(False)
+        self.timerCountdown.timeout.connect(self.dec_countdown)
+        self._widget.pbtn_countdown_start.pressed.connect(
+          self.timerCountdown.start)
+        self._widget.pbtn_countdown_pause.pressed.connect(
+          self.timerCountdown.stop)
+        self._widget.pbtn_countdown_reset.pressed.connect(
+          self._on_countdown_reset_button_pressed)          
+
+#EMERGENCY STOP
+        self._widget.pbtn_emergency_stop.pressed.connect(
+          self._on_emergency_stop_button_pressed)
+
+#ACCU
+        self._topic_name = 'accu'
+        self.message_class = Accu
+        self._subscriber = rospy.Subscriber(
+          self._topic_name, self.message_class, self.callback_accu)  
+        self.connect(self, SIGNAL("new_value_accu1"), self.set_ledt_accu1)
+        self.connect(self, SIGNAL("new_value_accu2"), self.set_ledt_accu2)
+
+#CO2
+        self._topic_name = 'co2'
+        self.message_class = Int16
+        self._subscriber = rospy.Subscriber(
+          self._topic_name, self.message_class, self.callback_co2)  
+        self.connect(self, SIGNAL("new_value_co2"), self.set_ledt_co2)
+
+#VICTIM_DETECTET
+        self._topic_name = 'thermocam/string'
+        self.message_class = String
+        self._subscriber = rospy.Subscriber(
+          self._topic_name, self.message_class, self.callback_victim_detected)  
+        self.connect(self, SIGNAL("new_value_victim_detected"),          
+          self.set_ledt_victim_detected)
+        self._widget.pbtn_victim_detected_confirm.pressed.connect(
+          self._on_victim_detected_confirm_button_pressed)
+        self._widget.pbtn_victim_detected_cancel.pressed.connect(
+          self._on_victim_detected_cancel_button_pressed)
+
+#MARK_DIV_ON_OFF
+        self._widget.pbtn_homing.pressed.connect(
+          self._on_homing_button_pressed)
+        self._widget.pbtn_inverse_on.pressed.connect(
+          self._on_inverse_on_button_pressed)
+        self._widget.pbtn_inverse_off.pressed.connect(
+          self._on_inverse_off_button_pressed)
+        self._widget.pbtn_motor_on.pressed.connect(
+          self._on_motor_on_button_pressed)
+        self._widget.pbtn_motor_off.pressed.connect(
+          self._on_motor_off_button_pressed)
+        self._widget.pbtn_relativ_on.pressed.connect(
+          self._on_relativ_on_button_pressed)
+        self._widget.pbtn_relativ_off.pressed.connect(
+          self._on_relativ_off_button_pressed)
+
+######       DEF SETTINGS             ##########################################
+
+        self._widget.hsld_gripper_offset_move.valueChanged.connect(
+          self._on_gripper_offset_slider_value_changed)
+        self._widget.pbtn_gripper_offset_move_neg.pressed.connect(
+          self._on_gripper_offset_move_neg_button_pressed)        
+        self._widget.pbtn_gripper_offset_move_pos.pressed.connect(
+          self._on_gripper_offset_move_pos_button_pressed)    
+
+        self._widget.hsld_gripper_force_move.valueChanged.connect(
+          self._on_gripper_force_slider_value_changed)
+        self._widget.pbtn_gripper_force_move_neg.pressed.connect(
+          self._on_gripper_force_move_neg_button_pressed)        
+        self._widget.pbtn_gripper_force_move_pos.pressed.connect(
+          self._on_gripper_force_move_pos_button_pressed)  
+
+        self._widget.pbtn_head_cam_light_on.pressed.connect(
+          self._on_head_cam_light_on_button_pressed)          
+        self._widget.pbtn_head_cam_light_off.pressed.connect(
+          self._on_head_cam_light_off_button_pressed)
+
+        self._widget.hsld_front_cam_move.valueChanged.connect(
+          self._on_front_cam_slider_value_changed)
+        self._widget.pbtn_front_cam_move_neg.pressed.connect(
+          self._on_front_cam_move_neg_button_pressed)        
+        self._widget.pbtn_front_cam_move_pos.pressed.connect(
+          self._on_front_cam_move_pos_button_pressed)  
+
+        self._widget.hsld_back_cam_move.valueChanged.connect(
+          self._on_back_cam_slider_value_changed)
+        self._widget.pbtn_back_cam_move_neg.pressed.connect(
+          self._on_back_cam_move_neg_button_pressed)        
+        self._widget.pbtn_back_cam_move_pos.pressed.connect(
+          self._on_back_cam_move_pos_button_pressed)
+            
+######       DEF FLIPPER CONTROL      ##########################################
+
+#LEFT_FRONT
+        self._widget.hsld_flipper_left_front_move.valueChanged.connect(
+          self._on_flipper_left_front_slider_value_changed)
+        self._widget.pbtn_flipper_left_front_move_neg.pressed.connect(
+          self._on_flipper_left_front_move_neg_button_pressed)        
+        self._widget.pbtn_flipper_left_front_move_pos.pressed.connect(
+          self._on_flipper_left_front_move_pos_button_pressed)
+        self._widget.pbtn_flipper_left_front_move_home.pressed.connect(
+          self._on_flipper_left_front_move_home_button_pressed)
+#RIGHT_FRONT
+        self._widget.hsld_flipper_right_front_move.valueChanged.connect(
+          self._on_flipper_right_front_slider_value_changed)
+        self._widget.pbtn_flipper_right_front_move_neg.pressed.connect(
+          self._on_flipper_right_front_move_neg_button_pressed)        
+        self._widget.pbtn_flipper_right_front_move_pos.pressed.connect(
+          self._on_flipper_right_front_move_pos_button_pressed)
+        self._widget.pbtn_flipper_right_front_move_home.pressed.connect(
+          self._on_flipper_right_front_move_home_button_pressed)
+#LEFT_BACK
+        self._widget.hsld_flipper_left_back_move.valueChanged.connect(
+          self._on_flipper_left_back_slider_value_changed)
+        self._widget.pbtn_flipper_left_back_move_neg.pressed.connect(
+          self._on_flipper_left_back_move_neg_button_pressed)        
+        self._widget.pbtn_flipper_left_back_move_pos.pressed.connect(
+          self._on_flipper_left_back_move_pos_button_pressed)
+        self._widget.pbtn_flipper_left_back_move_home.pressed.connect(
+          self._on_flipper_left_back_move_home_button_pressed)
+#RIGHT_BACK          
+        self._widget.hsld_flipper_right_back_move.valueChanged.connect(
+          self._on_flipper_right_back_slider_value_changed)
+        self._widget.pbtn_flipper_right_back_move_neg.pressed.connect(
+          self._on_flipper_right_back_move_neg_button_pressed)        
+        self._widget.pbtn_flipper_right_back_move_pos.pressed.connect(
+          self._on_flipper_right_back_move_pos_button_pressed)
+        self._widget.pbtn_flipper_right_back_move_home.pressed.connect(
+          self._on_flipper_right_back_move_home_button_pressed)
+#LEFT        
+        self._widget.hsld_flipper_left_move.valueChanged.connect(
+          self._on_flipper_left_slider_value_changed)
+        self._widget.pbtn_flipper_left_move_neg.pressed.connect(
+          self._on_flipper_left_move_neg_button_pressed)        
+        self._widget.pbtn_flipper_left_move_pos.pressed.connect(
+          self._on_flipper_left_move_pos_button_pressed)
+        self._widget.pbtn_flipper_left_move_home.pressed.connect(
+          self._on_flipper_left_move_home_button_pressed)
+#RIGHT          
+        self._widget.hsld_flipper_right_move.valueChanged.connect(
+          self._on_flipper_right_slider_value_changed)
+        self._widget.pbtn_flipper_right_move_neg.pressed.connect(
+          self._on_flipper_right_move_neg_button_pressed)        
+        self._widget.pbtn_flipper_right_move_pos.pressed.connect(
+          self._on_flipper_right_move_pos_button_pressed)
+        self._widget.pbtn_flipper_right_move_home.pressed.connect(
+          self._on_flipper_right_move_home_button_pressed)
+#FRONT        
+        self._widget.hsld_flipper_front_move.valueChanged.connect(
+          self._on_flipper_front_slider_value_changed)
+        self._widget.pbtn_flipper_front_move_neg.pressed.connect(
+          self._on_flipper_front_move_neg_button_pressed)        
+        self._widget.pbtn_flipper_front_move_pos.pressed.connect(
+          self._on_flipper_front_move_pos_button_pressed)
+        self._widget.pbtn_flipper_front_move_home.pressed.connect(
+          self._on_flipper_front_move_home_button_pressed)
+#BACK                    
+        self._widget.hsld_flipper_back_move.valueChanged.connect(
+          self._on_flipper_back_slider_value_changed)
+        self._widget.pbtn_flipper_back_move_neg.pressed.connect(
+          self._on_flipper_back_move_neg_button_pressed)        
+        self._widget.pbtn_flipper_back_move_pos.pressed.connect(
+          self._on_flipper_back_move_pos_button_pressed)
+        self._widget.pbtn_flipper_back_move_home.pressed.connect(
+          self._on_flipper_back_move_home_button_pressed)
+#ALL          
+        self._widget.hsld_flipper_all_move.valueChanged.connect(
+          self._on_flipper_all_slider_value_changed)
+        self._widget.pbtn_flipper_all_move_neg.pressed.connect(
+          self._on_flipper_all_move_neg_button_pressed)        
+        self._widget.pbtn_flipper_all_move_pos.pressed.connect(
+          self._on_flipper_all_move_pos_button_pressed)
+        self._widget.pbtn_flipper_all_move_home.pressed.connect(
+          self._on_flipper_all_move_home_button_pressed)
+
+
+######       DEF ARM CONTROL          ##########################################
+
+#TRANSLAT X
+        self._widget.hsld_arm_x_move.valueChanged.connect(
+          self._on_arm_x_slider_value_changed)
+        self._widget.pbtn_arm_x_move_neg.pressed.connect(
+          self._on_arm_x_move_neg_button_pressed)        
+        self._widget.pbtn_arm_x_move_pos.pressed.connect(
+          self._on_arm_x_move_pos_button_pressed)
+#TRANSLAT Y          
+        self._widget.hsld_arm_y_move.valueChanged.connect(
+          self._on_arm_y_slider_value_changed)
+        self._widget.pbtn_arm_y_move_neg.pressed.connect(
+          self._on_arm_y_move_neg_button_pressed)        
+        self._widget.pbtn_arm_y_move_pos.pressed.connect(
+          self._on_arm_y_move_pos_button_pressed)
+#TRANSLAT Z          
+        self._widget.hsld_arm_z_move.valueChanged.connect(
+          self._on_arm_z_slider_value_changed)
+        self._widget.pbtn_arm_z_move_neg.pressed.connect(
+          self._on_arm_z_move_neg_button_pressed)        
+        self._widget.pbtn_arm_z_move_pos.pressed.connect(
+          self._on_arm_z_move_pos_button_pressed)
+#ROLL
+        self._widget.hsld_arm_roll_move.valueChanged.connect(
+          self._on_arm_roll_slider_value_changed)
+        self._widget.pbtn_arm_roll_move_neg.pressed.connect(
+          self._on_arm_roll_move_neg_button_pressed)        
+        self._widget.pbtn_arm_roll_move_pos.pressed.connect(
+          self._on_arm_roll_move_pos_button_pressed)
+#PITCH          
+        self._widget.hsld_arm_pitch_move.valueChanged.connect(
+          self._on_arm_pitch_slider_value_changed)
+        self._widget.pbtn_arm_pitch_move_neg.pressed.connect(
+          self._on_arm_pitch_move_neg_button_pressed)        
+        self._widget.pbtn_arm_pitch_move_pos.pressed.connect(
+          self._on_arm_pitch_move_pos_button_pressed)
+#YAW          
+        self._widget.hsld_arm_yaw_move.valueChanged.connect(
+          self._on_arm_yaw_slider_value_changed)
+        self._widget.pbtn_arm_yaw_move_neg.pressed.connect(
+          self._on_arm_yaw_move_neg_button_pressed)        
+        self._widget.pbtn_arm_yaw_move_pos.pressed.connect(
+          self._on_arm_yaw_move_pos_button_pressed)          
+#GRIPPER OPEN          
+        self._widget.hsld_gripper_open_move.valueChanged.connect(
+          self._on_gripper_open_slider_value_changed)
+        self._widget.pbtn_gripper_open_move_neg.pressed.connect(
+          self._on_gripper_open_move_neg_button_pressed)        
+        self._widget.pbtn_gripper_open_move_pos.pressed.connect(
+          self._on_gripper_open_move_pos_button_pressed)
+        self._widget.pbtn_gripper_open.pressed.connect(
+          self._on_gripper_open_button_pressed)
+#GRIPPER CLOSE                    
+        self._widget.hsld_gripper_close_move.valueChanged.connect(
+          self._on_gripper_close_slider_value_changed)
+        self._widget.pbtn_gripper_close_move_neg.pressed.connect(
+          self._on_gripper_close_move_neg_button_pressed)        
+        self._widget.pbtn_gripper_close_move_pos.pressed.connect(
+          self._on_gripper_close_move_pos_button_pressed)
+        self._widget.pbtn_gripper_close.pressed.connect(
+          self._on_gripper_close_button_pressed)
+
+######       DEF SAVE POSITIONS       ##########################################
+        self._widget.pbtn_save_pos_1.pressed.connect(
+          self._on_save_pos_1_button_pressed)
+        self._widget.pbtn_save_pos_2.pressed.connect(
+          self._on_save_pos_2_button_pressed)
+        self._widget.pbtn_save_pos_3.pressed.connect(
+          self._on_save_pos_3_button_pressed)
+        self._widget.pbtn_save_pos_4.pressed.connect(
+          self._on_save_pos_4_button_pressed)
+        self._widget.pbtn_save_pos_5.pressed.connect(
+          self._on_save_pos_5_button_pressed)  
+        self._widget.pbtn_set_pos_1.pressed.connect(
+          self._on_set_pos_1_button_pressed)
+        self._widget.pbtn_set_pos_2.pressed.connect(
+          self._on_set_pos_2_button_pressed)
+        self._widget.pbtn_set_pos_3.pressed.connect(
+          self._on_set_pos_3_button_pressed)
+        self._widget.pbtn_set_pos_4.pressed.connect(
+          self._on_set_pos_4_button_pressed)
+        self._widget.pbtn_set_pos_5.pressed.connect(
+          self._on_set_pos_5_button_pressed)
+          
+######       DEF AXIS FORCE           ##########################################
+
+#7th AXIS
+        self._widget.hsld_7th_axis_move.valueChanged.connect(
+          self._on_7th_axis_slider_value_changed)
+        self._widget.pbtn_7th_axis_move_neg.pressed.connect(
+          self._on_7th_axis_move_neg_button_pressed)        
+        self._widget.pbtn_7th_axis_move_pos.pressed.connect(
+          self._on_7th_axis_move_pos_button_pressed)
+        self._widget.pbtn_7th_axis_move_home.pressed.connect(
+          self._on_7th_axis_move_home_button_pressed)
+#6th AXIS          
+        self._widget.hsld_6th_axis_move.valueChanged.connect(
+          self._on_6th_axis_slider_value_changed)
+        self._widget.pbtn_6th_axis_move_neg.pressed.connect(
+          self._on_6th_axis_move_neg_button_pressed)        
+        self._widget.pbtn_6th_axis_move_pos.pressed.connect(
+          self._on_6th_axis_move_pos_button_pressed)
+        self._widget.pbtn_6th_axis_move_home.pressed.connect(
+          self._on_6th_axis_move_home_button_pressed)
+#5th AXIS          
+        self._widget.hsld_5th_axis_move.valueChanged.connect(
+          self._on_5th_axis_slider_value_changed)
+        self._widget.pbtn_5th_axis_move_neg.pressed.connect(
+          self._on_5th_axis_move_neg_button_pressed)        
+        self._widget.pbtn_5th_axis_move_pos.pressed.connect(
+          self._on_5th_axis_move_pos_button_pressed)
+        self._widget.pbtn_5th_axis_move_home.pressed.connect(
+          self._on_5th_axis_move_home_button_pressed)
+#4th AXIS
+        self._widget.hsld_4th_axis_move.valueChanged.connect(
+          self._on_4th_axis_slider_value_changed)
+        self._widget.pbtn_4th_axis_move_neg.pressed.connect(
+          self._on_4th_axis_move_neg_button_pressed)        
+        self._widget.pbtn_4th_axis_move_pos.pressed.connect(
+          self._on_4th_axis_move_pos_button_pressed)
+        self._widget.pbtn_4th_axis_move_home.pressed.connect(
+          self._on_4th_axis_move_home_button_pressed)
+#3rd AXIS       
+        self._widget.hsld_3rd_axis_move.valueChanged.connect(
+          self._on_3rd_axis_slider_value_changed)
+        self._widget.pbtn_3rd_axis_move_neg.pressed.connect(
+          self._on_3rd_axis_move_neg_button_pressed)        
+        self._widget.pbtn_3rd_axis_move_pos.pressed.connect(
+          self._on_3rd_axis_move_pos_button_pressed)         
+        self._widget.pbtn_3rd_axis_move_home.pressed.connect(
+          self._on_3rd_axis_move_home_button_pressed)
+#GRIPPER OPEN 2         
+        self._widget.hsld_gripper_open_move_2.valueChanged.connect(
+          self._on_gripper_open_slider_value_changed)
+        self._widget.pbtn_gripper_open_move_neg_2.pressed.connect(
+          self._on_gripper_open_move_neg_button_pressed)        
+        self._widget.pbtn_gripper_open_move_pos_2.pressed.connect(
+          self._on_gripper_open_move_pos_button_pressed)
+        self._widget.pbtn_gripper_open_2.pressed.connect(
+          self._on_gripper_open_button_pressed)
+#GRIPPER CLOSE 2                  
+        self._widget.hsld_gripper_close_move_2.valueChanged.connect(
+          self._on_gripper_close_slider_value_changed)
+        self._widget.pbtn_gripper_close_move_neg_2.pressed.connect(
+          self._on_gripper_close_move_neg_button_pressed)        
+        self._widget.pbtn_gripper_close_move_pos_2.pressed.connect(
+          self._on_gripper_close_move_pos_button_pressed)
+        self._widget.pbtn_gripper_close_2.pressed.connect(
+          self._on_gripper_close_button_pressed)
+          
+          
+######       FKT SAVE POSITIONS       ##########################################
+
+ 
+    def _on_save_pos_1_button_pressed(self):
+        self._widget.ledt_x_saved_pos_1.setText(
+            "%.1f" % (self._widget.hsld_arm_x_move.value()))
+        self._widget.ledt_y_saved_pos_1.setText(
+            "%.1f" % (self._widget.hsld_arm_y_move.value()))
+        self._widget.ledt_z_saved_pos_1.setText(
+            "%.1f" % (self._widget.hsld_arm_z_move.value()))
+        self._widget.ledt_roll_saved_pos_1.setText(
+            "%.1f" % (self._widget.hsld_arm_roll_move.value()))
+        self._widget.ledt_pitch_saved_pos_1.setText(
+            "%.1f" % (self._widget.hsld_arm_pitch_move.value()))
+        self._widget.ledt_yaw_saved_pos_1.setText(
+            "%.1f" % (self._widget.hsld_arm_yaw_move.value()))
+
+    def _on_save_pos_2_button_pressed(self):
+        self._widget.ledt_x_saved_pos_2.setText(
+            "%.1f" % (self._widget.hsld_arm_x_move.value()))
+        self._widget.ledt_y_saved_pos_2.setText(
+            "%.1f" % (self._widget.hsld_arm_y_move.value()))
+        self._widget.ledt_z_saved_pos_2.setText(
+            "%.1f" % (self._widget.hsld_arm_z_move.value()))
+        self._widget.ledt_roll_saved_pos_2.setText(
+            "%.1f" % (self._widget.hsld_arm_roll_move.value()))
+        self._widget.ledt_pitch_saved_pos_2.setText(
+            "%.1f" % (self._widget.hsld_arm_pitch_move.value()))
+        self._widget.ledt_yaw_saved_pos_2.setText(
+            "%.1f" % (self._widget.hsld_arm_yaw_move.value()))
+            
+    def _on_save_pos_3_button_pressed(self):
+        self._widget.ledt_x_saved_pos_3.setText(
+            "%.1f" % (self._widget.hsld_arm_x_move.value()))
+        self._widget.ledt_y_saved_pos_3.setText(
+            "%.1f" % (self._widget.hsld_arm_y_move.value()))
+        self._widget.ledt_z_saved_pos_3.setText(
+            "%.1f" % (self._widget.hsld_arm_z_move.value()))
+        self._widget.ledt_roll_saved_pos_3.setText(
+            "%.1f" % (self._widget.hsld_arm_roll_move.value()))
+        self._widget.ledt_pitch_saved_pos_3.setText(
+            "%.1f" % (self._widget.hsld_arm_pitch_move.value()))
+        self._widget.ledt_yaw_saved_pos_3.setText(
+            "%.1f" % (self._widget.hsld_arm_yaw_move.value()))
+            
+    def _on_save_pos_4_button_pressed(self):
+        self._widget.ledt_x_saved_pos_4.setText(
+            "%.1f" % (self._widget.hsld_arm_x_move.value()))
+        self._widget.ledt_y_saved_pos_4.setText(
+            "%.1f" % (self._widget.hsld_arm_y_move.value()))
+        self._widget.ledt_z_saved_pos_4.setText(
+            "%.1f" % (self._widget.hsld_arm_z_move.value()))
+        self._widget.ledt_roll_saved_pos_4.setText(
+            "%.1f" % (self._widget.hsld_arm_roll_move.value()))
+        self._widget.ledt_pitch_saved_pos_4.setText(
+            "%.1f" % (self._widget.hsld_arm_pitch_move.value()))
+        self._widget.ledt_yaw_saved_pos_4.setText(
+            "%.1f" % (self._widget.hsld_arm_yaw_move.value()))            
+                        
+    def _on_save_pos_5_button_pressed(self):
+        self._widget.ledt_x_saved_pos_5.setText(
+            "%.1f" % (self._widget.hsld_arm_x_move.value()))
+        self._widget.ledt_y_saved_pos_5.setText(
+            "%.1f" % (self._widget.hsld_arm_y_move.value()))
+        self._widget.ledt_z_saved_pos_5.setText(
+            "%.1f" % (self._widget.hsld_arm_z_move.value()))
+        self._widget.ledt_roll_saved_pos_5.setText(
+            "%.1f" % (self._widget.hsld_arm_roll_move.value()))
+        self._widget.ledt_pitch_saved_pos_5.setText(
+            "%.1f" % (self._widget.hsld_arm_pitch_move.value()))
+        self._widget.ledt_yaw_saved_pos_5.setText(
+            "%.1f" % (self._widget.hsld_arm_yaw_move.value()))
+            
+                             
+    def _on_set_pos_1_button_pressed(self):
+        self._arm_set_pos(int(self._widget.ledt_x_saved_pos_1.text()[:-2]),
+                          int(self._widget.ledt_y_saved_pos_1.text()[:-2]),
+                          int(self._widget.ledt_z_saved_pos_1.text()[:-2]),
+                          int(self._widget.ledt_roll_saved_pos_1.text()[:-2]),
+                          int(self._widget.ledt_pitch_saved_pos_1.text()[:-2]),
+                          int(self._widget.ledt_yaw_saved_pos_1.text()[:-2]))
+
+    def _on_set_pos_2_button_pressed(self):
+        self._arm_set_pos(int(self._widget.ledt_x_saved_pos_2.text()[:-2]),
+                          int(self._widget.ledt_y_saved_pos_2.text()[:-2]),
+                          int(self._widget.ledt_z_saved_pos_2.text()[:-2]),
+                          int(self._widget.ledt_roll_saved_pos_2.text()[:-2]),
+                          int(self._widget.ledt_pitch_saved_pos_2.text()[:-2]),
+                          int(self._widget.ledt_yaw_saved_pos_2.text()[:-2]))
+        
+    def _on_set_pos_3_button_pressed(self):
+        self._arm_set_pos(int(self._widget.ledt_x_saved_pos_3.text()[:-2]),
+                          int(self._widget.ledt_y_saved_pos_3.text()[:-2]),
+                          int(self._widget.ledt_z_saved_pos_3.text()[:-2]),
+                          int(self._widget.ledt_roll_saved_pos_3.text()[:-2]),
+                          int(self._widget.ledt_pitch_saved_pos_3.text()[:-2]),
+                          int(self._widget.ledt_yaw_saved_pos_3.text()[:-2]))
+
+    def _on_set_pos_4_button_pressed(self):
+        self._arm_set_pos(int(self._widget.ledt_x_saved_pos_4.text()[:-2]),
+                          int(self._widget.ledt_y_saved_pos_4.text()[:-2]),
+                          int(self._widget.ledt_z_saved_pos_4.text()[:-2]),
+                          int(self._widget.ledt_roll_saved_pos_4.text()[:-2]),
+                          int(self._widget.ledt_pitch_saved_pos_4.text()[:-2]),
+                          int(self._widget.ledt_yaw_saved_pos_4.text()[:-2]))
+        
+    def _on_set_pos_5_button_pressed(self):
+        self._arm_set_pos(int(self._widget.ledt_x_saved_pos_5.text()[:-2]),
+                          int(self._widget.ledt_y_saved_pos_5.text()[:-2]),
+                          int(self._widget.ledt_z_saved_pos_5.text()[:-2]),
+                          int(self._widget.ledt_roll_saved_pos_5.text()[:-2]),
+                          int(self._widget.ledt_pitch_saved_pos_5.text()[:-2]),
+                          int(self._widget.ledt_yaw_saved_pos_5.text()[:-2]))        
+        
+
+    def _arm_set_pos(self, value_x, value_y, value_z, value_roll, value_pitch, value_yaw):
+        actual_x = self._widget.hsld_arm_x_move.value()
+        target_x = value_x
+        actual_y = self._widget.hsld_arm_y_move.value()
+        target_y = value_y
+        actual_z = self._widget.hsld_arm_z_move.value()
+        target_z = value_z
+        actual_roll = self._widget.hsld_arm_roll_move.value()
+        target_roll = value_roll
+        actual_pitch = self._widget.hsld_arm_pitch_move.value()
+        target_pitch = value_pitch
+        actual_yaw = self._widget.hsld_arm_yaw_move.value()
+        target_yaw = value_yaw
+            
+        while ( actual_x <> target_x or 
+                actual_y <> target_y or 
+                actual_z <> target_z or
+                actual_roll <> target_roll or
+                actual_pitch <> target_pitch or
+                actual_yaw <> target_yaw):
+        #TRANSLAT_X  
+            if abs(actual_x - target_x) >= 10:
+                if actual_x > target_x:
+                    self._widget.hsld_arm_x_move.setValue(actual_x - 10)
+                else:
+                    self._widget.hsld_arm_x_move.setValue(actual_x + 10)
+            else:
+                if actual_x > target_x:
+                    self._widget.hsld_arm_x_move.setValue(actual_x - 1)
+                elif actual_x < target_x:
+                    self._widget.hsld_arm_x_move.setValue(actual_x + 1)
+            #TODO: check if time.sleep is the best way to do this
+            actual_x = self._widget.hsld_arm_x_move.value()
+        #TRANSLAT_Y  
+            if abs(actual_y - target_y) >= 10:
+                if actual_y > target_y:
+                    self._widget.hsld_arm_y_move.setValue(actual_y - 10)
+                else:
+                    self._widget.hsld_arm_y_move.setValue(actual_y + 10)
+            else:
+                if actual_y > target_y:
+                    self._widget.hsld_arm_y_move.setValue(actual_y - 1)
+                elif actual_y < target_y:
+                    self._widget.hsld_arm_y_move.setValue(actual_y + 1)
+            actual_y = self._widget.hsld_arm_y_move.value()
+        #TRANSLAT_Z
+            if abs(actual_z - target_z) >= 10:
+                if actual_z > target_z:
+                    self._widget.hsld_arm_z_move.setValue(actual_z - 10)
+                else:
+                    self._widget.hsld_arm_z_move.setValue(actual_z + 10)
+            else:
+                if actual_z > target_z:
+                    self._widget.hsld_arm_z_move.setValue(actual_z - 1)
+                elif actual_z < target_z:
+                    self._widget.hsld_arm_z_move.setValue(actual_z + 1)
+            actual_z = self._widget.hsld_arm_z_move.value()
+        #ROTAT_ROLL
+            if abs(actual_roll - target_roll) >= 10:
+                if actual_roll > target_roll:
+                    self._widget.hsld_arm_roll_move.setValue(actual_roll - 10)
+                else:
+                    self._widget.hsld_arm_roll_move.setValue(actual_roll + 10)
+            else:
+                if actual_roll > target_roll:
+                    self._widget.hsld_arm_roll_move.setValue(actual_roll - 1)
+                elif actual_roll < target_roll:
+                    self._widget.hsld_arm_roll_move.setValue(actual_roll + 1)
+            actual_roll = self._widget.hsld_arm_roll_move.value()
+        #ROTAT_PITCH
+            if abs(actual_pitch - target_pitch) >= 10:
+                if actual_pitch > target_pitch:
+                    self._widget.hsld_arm_pitch_move.setValue(actual_pitch - 10)
+                else:
+                    self._widget.hsld_arm_pitch_move.setValue(actual_pitch + 10)
+            else:
+                if actual_pitch > target_pitch:
+                    self._widget.hsld_arm_pitch_move.setValue(actual_pitch - 1)
+                elif actual_pitch < target_pitch:
+                    self._widget.hsld_arm_pitch_move.setValue(actual_pitch + 1)
+            actual_pitch = self._widget.hsld_arm_pitch_move.value()
+        #ROTAT_YAW
+            if abs(actual_yaw - target_yaw) >= 10:
+                if actual_yaw > target_yaw:
+                    self._widget.hsld_arm_yaw_move.setValue(actual_yaw - 10)
+                else:
+                    self._widget.hsld_arm_yaw_move.setValue(actual_yaw + 10)
+            else:
+                if actual_yaw > target_yaw:
+                    self._widget.hsld_arm_yaw_move.setValue(actual_yaw - 1)
+                elif actual_yaw < target_yaw:
+                    self._widget.hsld_arm_yaw_move.setValue(actual_yaw + 1)
+            actual_yaw = self._widget.hsld_arm_yaw_move.value()
+                
+              
+######       FKT ALLGEMEIN            ##########################################
+#COUNTDOWN
+    def dec_countdown(self):
+        if self._widget.lcd_countdown_sec.intValue() == 0:
+            if self._widget.lcd_countdown_min.intValue() == 0:
+                #TODO: destruct QTimer
+                pass
+            else:
+                self._widget.lcd_countdown_sec.display(59)
+                self._widget.lcd_countdown_min.display(
+                self._widget.lcd_countdown_min.intValue() - 1)
+        else:
+            self._widget.lcd_countdown_sec.display(
+               self._widget.lcd_countdown_sec.intValue() - 1)
+
+    def _on_countdown_reset_button_pressed(self):
+        self._widget.lcd_countdown_sec.display(00)
+        self._widget.lcd_countdown_min.display(15)
+
+#EMERGENCY STOP
+    def _on_emergency_stop_button_pressed(self):
+        try:
+          str = "<D11CST000000>"
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+          str = "<D13CST000000>"
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+          
+#ACCU
+    def callback_accu(self, data):
+      self.emit(SIGNAL("new_value_accu1"), data.Accu1)
+      self.emit(SIGNAL("new_value_accu2"), data.Accu2)
+
+    def set_ledt_accu1(self, value):
+      self._widget.ledt_accu1.setText("%.2f" % float(value) +" V")
+      if value < 25:    
+        self._widget.ledt_accu1.setStyleSheet(LEDT_COLOUR_ORANGE)
+      elif value > 25.5:    
+        self._widget.ledt_accu1.setStyleSheet(LEDT_COLOUR_WHITE)
+      
+    def set_ledt_accu2(self, value):
+      self._widget.ledt_accu2.setText("%.2f" % float(value) +" V")
+      if value < 25:
+        self._widget.ledt_accu2.setStyleSheet(LEDT_COLOUR_ORANGE)
+      elif value > 25.5:
+        self._widget.ledt_accu2.setStyleSheet(LEDT_COLOUR_WHITE)
+
+#CO2
+    def callback_co2(self, data):
+      self.emit(SIGNAL("new_value_co2"), data.data)
+
+    def set_ledt_co2(self, value):
+      self._widget.ledt_co2.setText("%.2f" % float(value) +" ppm")
+        
+#VICTIM_DETECTET
+    def callback_victim_detected(self, data):
+      self.emit(SIGNAL("new_value_victim_detected"), str(data))
+
+    def set_ledt_victim_detected(self, value):
+        self._widget.ledt_victim_detected.setText("detected")
+        self._widget.ledt_victim_detected.setStyleSheet(LEDT_COLOUR_YELLOW)
+  
+    def _on_victim_detected_confirm_button_pressed(self):
+      if self._widget.ledt_victim_detected.isVisible():
+        try:
+          add_victim = rospy.ServiceProxy('worldmodel/add_object', AddObject)      
+          req = AddObject._request_class()
+          req.object.header.frame_id = 'base_link'
+          req.object.header.stamp = rospy.Time(0)
+          req.map_to_next_obstacle = True
+          req.object.info.class_id = "victim"
+          req.object.info.support = 100
+          req.object.pose.pose.position.x = 0.1
+          req.object.pose.pose.position.y = 0
+          req.object.pose.pose.position.z = 0
+          req.object.pose.pose.orientation.w = 1
+          req.object.state.state = ObjectState.CONFIRMED
+
+          resp = add_victim(req)
+
+          status_msg = "added Victim, id = "
+          status_msg += resp.object.info.object_id
+          print(status_msg)
+
+          #-----rrt-fh-wels: Giuliano Roland   
+          #self._task_id = resp.object.info.object_id
+          #self._victimAnswer = VictimAnswer.CONFIRM
+          #self._publish_answer()
+        
+          self._on_victim_detected_cancel_button_pressed() 
+        except rospy.ServiceException, e:
+          print("Victim service call failed")
+
+    def _on_victim_detected_cancel_button_pressed(self):
+        self._widget.ledt_victim_detected.setText("")            
+        self._widget.ledt_victim_detected.setStyleSheet(LEDT_COLOUR_WHITE)
+
+#HOMING
+    def _on_homing_button_pressed(self):
+        try:
+          fobj = open("/home/giuli/rrt_Stacks/rrt_rqt_plugin_mark_robot/data/homing.txt", "r")
+          #fobj = open("/home/rrt/ros_workspace/rrt_gui/rrt_rqt_plugin_mark_robot/data/homing.txt", "r")
+          for line in fobj.readlines():
+            self._pub_serial_out.publish(String(line))
+            time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+
+#MOTOR ON
+    def _on_motor_on_button_pressed(self):
+        try:
+          str = "<D11CMO000001>"
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+
+#MOTOR OFF          
+    def _on_motor_off_button_pressed(self):
+        try:
+          str = "<D11CMO000000>"
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+
+#INVERSE ON    
+    def _on_inverse_on_button_pressed(self):
+        try:
+          str = "<In+0001>"
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+          self._widget.hsld_arm_x_move.setValue(1000)
+          self._widget.hsld_arm_y_move.setValue(800)
+          self._widget.hsld_arm_z_move.setValue(600)
+          self._widget.hsld_arm_roll_move.setValue(0)
+          self._widget.hsld_arm_pitch_move.setValue(0)
+          self._widget.hsld_arm_yaw_move.setValue(0)        
+        except rospy.ServiceException, e:
+          print("Service call failed")
+
+#INVERSE OFF
+    def _on_inverse_off_button_pressed(self):
+        try:
+          str = "<In+0000>"
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+
+#RELATIV ON    
+    def _on_relativ_on_button_pressed(self):
+        try:
+          str = "<Ir+0000>"
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)        
+        except rospy.ServiceException, e:
+          print("Service call failed")
+
+#RELATIV OFF
+    def _on_relativ_off_button_pressed(self):
+        try:
+          str = "<Ir+0001>"
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+          
+                
+######       FKT SETTINGS             ##########################################
+
+#GRIPPER
+    def _on_gripper_offset_slider_value_changed(self, value):
+          self._widget.ledt_gripper_offset_move.setText(
+            "%.1f" % (value))
+        
+    def _on_gripper_offset_move_neg_button_pressed(self):
+        self._widget.hsld_gripper_offset_move.setValue(
+          self._widget.hsld_gripper_offset_move.value() - 1)
+        
+    def _on_gripper_offset_move_pos_button_pressed(self):
+        self._widget.hsld_gripper_offset_move.setValue(
+          self._widget.hsld_gripper_offset_move.value() + 1)
+          
+    def _on_gripper_force_slider_value_changed(self, value):
+        try:
+          str = "<G01CFR%06d>" % (value)
+          self._widget.ledt_gripper_force_move.setText(
+            "%.1f" % (value))
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_gripper_force_move_neg_button_pressed(self):
+        self._widget.hsld_gripper_force_move.setValue(
+          self._widget.hsld_gripper_force_move.value() - 1)
+        
+    def _on_gripper_force_move_pos_button_pressed(self):
+        self._widget.hsld_gripper_force_move.setValue(
+          self._widget.hsld_gripper_force_move.value() + 1)
+            
+#HEAD CAM
+    def _on_head_cam_light_on_button_pressed(self):
+        try:
+          str = "<R01C00000001>"
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+          
+    def _on_head_cam_light_off_button_pressed(self):
+        try:
+          str = "<R01C00000000>"
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+
+#FRONT_CAM
+    def _on_front_cam_slider_value_changed(self, value):
+        try:
+          str = "<S02P%+05d>" % (value*10)
+          self._widget.ledt_front_cam_move.setText(
+            "%.1f" % (value))
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_front_cam_move_neg_button_pressed(self):
+        self._widget.hsld_front_cam_move.setValue(
+          self._widget.hsld_front_cam_move.value() - 1)
+        
+    def _on_front_cam_move_pos_button_pressed(self):
+        self._widget.hsld_front_cam_move.setValue(
+          self._widget.hsld_front_cam_move.value() + 1)
+          
+#BACK_CAM
+    def _on_back_cam_slider_value_changed(self, value):
+        try:
+          str = "<S01P%+05d>" % (value*10)
+          self._widget.ledt_back_cam_move.setText(
+            "%.1f" % (value))
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_back_cam_move_neg_button_pressed(self):
+        self._widget.hsld_back_cam_move.setValue(
+          self._widget.hsld_back_cam_move.value() - 1)
+        
+    def _on_back_cam_move_pos_button_pressed(self):
+        self._widget.hsld_back_cam_move.setValue(
+          self._widget.hsld_back_cam_move.value() + 1)
+          
+                  
+######       FKT FLIPPER CONTROL      ##########################################
+
+#LEFT_FRONT
+    def _on_flipper_left_front_slider_value_changed(self, value):
+        try:
+          str = "<M06P%+05d>" % (value*10)
+          self._widget.ledt_flipper_left_front_move.setText(
+            "%.1f" % (value))
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_flipper_left_front_move_neg_button_pressed(self):
+        self._widget.hsld_flipper_left_front_move.setValue(
+          self._widget.hsld_flipper_left_front_move.value() - 1)
+        
+    def _on_flipper_left_front_move_pos_button_pressed(self):
+        self._widget.hsld_flipper_left_front_move.setValue(
+          self._widget.hsld_flipper_left_front_move.value() + 1)
+
+    def _on_flipper_left_front_move_home_button_pressed(self):
+        self._widget.hsld_flipper_left_front_move.setValue(80)
+        
+#RIGHT_FRONT                    
+    def _on_flipper_right_front_slider_value_changed(self, value):
+        try:
+          str = "<M05P%+05d>" % (value*10)
+          self._widget.ledt_flipper_right_front_move.setText(
+            "%.1f" % (value))
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_flipper_right_front_move_neg_button_pressed(self):
+        self._widget.hsld_flipper_right_front_move.setValue(
+          self._widget.hsld_flipper_right_front_move.value() - 1)
+        
+    def _on_flipper_right_front_move_pos_button_pressed(self):
+        self._widget.hsld_flipper_right_front_move.setValue(
+          self._widget.hsld_flipper_right_front_move.value() + 1)
+
+    def _on_flipper_right_front_move_home_button_pressed(self):
+        self._widget.hsld_flipper_right_front_move.setValue(80)
+        
+#LEFT_BACK
+    def _on_flipper_left_back_slider_value_changed(self, value):
+        try:
+          str = "<M08P%+05d>" % (value*10)
+          self._widget.ledt_flipper_left_back_move.setText(
+            "%.1f" % (value))
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_flipper_left_back_move_neg_button_pressed(self):
+        self._widget.hsld_flipper_left_back_move.setValue(
+          self._widget.hsld_flipper_left_back_move.value() - 1)
+        
+    def _on_flipper_left_back_move_pos_button_pressed(self):
+        self._widget.hsld_flipper_left_back_move.setValue(
+          self._widget.hsld_flipper_left_back_move.value() + 1)
+
+    def _on_flipper_left_back_move_home_button_pressed(self):
+        self._widget.hsld_flipper_left_back_move.setValue(45)
+        
+#RIGHT_BACK                    
+    def _on_flipper_right_back_slider_value_changed(self, value):
+        try:
+          str = "<M07P%+05d>" % (value*10)
+          self._widget.ledt_flipper_right_back_move.setText(
+            "%.1f" % (value))
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_flipper_right_back_move_neg_button_pressed(self):
+        self._widget.hsld_flipper_right_back_move.setValue(
+          self._widget.hsld_flipper_right_back_move.value() - 1)
+        
+    def _on_flipper_right_back_move_pos_button_pressed(self):
+        self._widget.hsld_flipper_right_back_move.setValue(
+          self._widget.hsld_flipper_right_back_move.value() + 1)
+
+    def _on_flipper_right_back_move_home_button_pressed(self):
+        self._widget.hsld_flipper_right_back_move.setValue(45)
+
+#LEFT                    
+    def _on_flipper_left_slider_value_changed(self, value):
+        try:
+          self._widget.hsld_flipper_left_front_move.setValue(value)
+          self._widget.ledt_flipper_left_front_move.setText(
+            "%.1f" % (value))
+          self._widget.hsld_flipper_left_back_move.setValue(value)
+          self._widget.ledt_flipper_left_back_move.setText(
+            "%.1f" % (value))
+          str = "<D10P%+05d>" % (value*10)
+          self._widget.ledt_flipper_left_move.setText(
+            "%.1f" % (value))
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)          
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_flipper_left_move_neg_button_pressed(self):
+        self._widget.hsld_flipper_left_move.setValue(
+          self._widget.hsld_flipper_left_move.value() - 1)
+        
+    def _on_flipper_left_move_pos_button_pressed(self):
+        self._widget.hsld_flipper_left_move.setValue(
+          self._widget.hsld_flipper_left_move.value() + 1)
+
+    def _on_flipper_left_move_home_button_pressed(self):
+        self._widget.hsld_flipper_left_move.setValue(60)
+
+#RIGHT                    
+    def _on_flipper_right_slider_value_changed(self, value):
+        try:
+          self._widget.hsld_flipper_right_front_move.setValue(value)
+          self._widget.ledt_flipper_right_front_move.setText(
+            "%.1f" % (value))
+          self._widget.hsld_flipper_right_back_move.setValue(value)
+          self._widget.ledt_flipper_right_back_move.setText(
+            "%.1f" % (value))
+          str = "<D09P%+05d>" % (value*10)
+          self._widget.ledt_flipper_right_move.setText(
+            "%.1f" % (value))
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_flipper_right_move_neg_button_pressed(self):
+        self._widget.hsld_flipper_right_move.setValue(
+          self._widget.hsld_flipper_right_move.value() - 1)
+        
+    def _on_flipper_right_move_pos_button_pressed(self):
+        self._widget.hsld_flipper_right_move.setValue(
+          self._widget.hsld_flipper_right_move.value() + 1)
+
+    def _on_flipper_right_move_home_button_pressed(self):
+        self._widget.hsld_flipper_right_move.setValue(60)
+
+#FRONT                              
+    def _on_flipper_front_slider_value_changed(self, value):
+        try:
+          self._widget.hsld_flipper_left_front_move.setValue(value)
+          self._widget.ledt_flipper_left_front_move.setText(
+            "%.1f" % (value))
+          self._widget.hsld_flipper_right_front_move.setValue(value)
+          self._widget.ledt_flipper_right_front_move.setText(
+            "%.1f" % (value))
+          str = "<D07P%+05d>" % (value*10)
+          self._widget.ledt_flipper_front_move.setText(
+            "%.1f" % (value))
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)  
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_flipper_front_move_neg_button_pressed(self):
+        self._widget.hsld_flipper_front_move.setValue(
+          self._widget.hsld_flipper_front_move.value() - 1)
+        
+    def _on_flipper_front_move_pos_button_pressed(self):
+        self._widget.hsld_flipper_front_move.setValue(
+          self._widget.hsld_flipper_front_move.value() + 1)
+
+    def _on_flipper_front_move_home_button_pressed(self):
+        self._widget.hsld_flipper_front_move.setValue(80)
+          
+#BACK                
+    def _on_flipper_back_slider_value_changed(self, value):
+        try:
+            self._widget.hsld_flipper_left_back_move.setValue(value)
+            self._widget.ledt_flipper_left_back_move.setText(
+              "%.1f" % (value))
+            self._widget.hsld_flipper_right_back_move.setValue(value)
+            self._widget.ledt_flipper_right_back_move.setText(
+              "%.1f" % (value))
+            str = "<D08P%+05d>" % (value*10)
+            self._widget.ledt_flipper_back_move.setText(
+              "%.1f" % (value))
+            self._pub_serial_out.publish(String(str))
+            time.sleep(WAIT_PUB_SERIAL_OUT)  
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_flipper_back_move_neg_button_pressed(self):
+        self._widget.hsld_flipper_back_move.setValue(
+          self._widget.hsld_flipper_back_move.value() - 1)
+        
+    def _on_flipper_back_move_pos_button_pressed(self):
+        self._widget.hsld_flipper_back_move.setValue(
+          self._widget.hsld_flipper_back_move.value() + 1)
+
+    def _on_flipper_back_move_home_button_pressed(self):
+        self._widget.hsld_flipper_back_move.setValue(45)
+
+#ALL
+    def _on_flipper_all_slider_value_changed(self, value):
+        try:
+          self._widget.hsld_flipper_left_move.setValue(value)
+          self._widget.ledt_flipper_left_move.setText(
+            "%.1f" % (value))
+          self._widget.hsld_flipper_right_move.setValue(value)
+          self._widget.ledt_flipper_right_move.setText(
+            "%.1f" % (value))
+          self._widget.hsld_flipper_front_move.setValue(value)
+          self._widget.ledt_flipper_front_move.setText(
+            "%.1f" % (value))
+          self._widget.hsld_flipper_back_move.setValue(value)
+          self._widget.ledt_flipper_back_move.setText(
+            "%.1f" % (value))
+          str = "<D06P%+05d>" % (value*10)
+          self._widget.ledt_flipper_all_move.setText(
+            "%.1f" % (value))
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)  
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_flipper_all_move_neg_button_pressed(self):
+        self._widget.hsld_flipper_all_move.setValue(
+          self._widget.hsld_flipper_all_move.value() - 1)
+        
+    def _on_flipper_all_move_pos_button_pressed(self):
+        self._widget.hsld_flipper_all_move.setValue(
+          self._widget.hsld_flipper_all_move.value() + 1)
+
+    def _on_flipper_all_move_home_button_pressed(self):
+        self._widget.hsld_flipper_all_move.setValue(60)
+        self._widget.hsld_flipper_front_move.setValue(80)
+        self._widget.hsld_flipper_back_move.setValue(45)
+        
+        
+######       FKT ARM CONTROL        ##########################################
+
+#TRANSLAT X                     
+    def _on_arm_x_slider_value_changed(self, value):
+        try:
+          str = "<Px%+05d>" % (value)
+          self._widget.ledt_arm_x_move.setText(
+            "%.1f" % (value))
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_arm_x_move_neg_button_pressed(self):
+        self._widget.hsld_arm_x_move.setValue(
+          self._widget.hsld_arm_x_move.value() - 1)
+  
+    def _on_arm_x_move_pos_button_pressed(self):
+        self._widget.hsld_arm_x_move.setValue(
+          self._widget.hsld_arm_x_move.value() + 1)
+        
+#TRANSLAT Y                     
+    def _on_arm_y_slider_value_changed(self, value):
+        try:
+          str = "<Py%+05d>" % (value)
+          self._widget.ledt_arm_y_move.setText(
+            "%.1f" % (value))
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_arm_y_move_neg_button_pressed(self):
+        self._widget.hsld_arm_y_move.setValue(
+          self._widget.hsld_arm_y_move.value() - 1)
+        
+    def _on_arm_y_move_pos_button_pressed(self):
+        self._widget.hsld_arm_y_move.setValue(
+          self._widget.hsld_arm_y_move.value() + 1)
+        
+#TRANSLAT Z                     
+    def _on_arm_z_slider_value_changed(self, value):
+        try:
+          str = "<Pz%+05d>" % (value)
+          self._widget.ledt_arm_z_move.setText(
+            "%.1f" % (value))
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_arm_z_move_neg_button_pressed(self):
+        self._widget.hsld_arm_z_move.setValue(
+          self._widget.hsld_arm_z_move.value() - 1)
+        
+    def _on_arm_z_move_pos_button_pressed(self):
+        self._widget.hsld_arm_z_move.setValue(
+          self._widget.hsld_arm_z_move.value() + 1)
+
+#ROTATION ROLL                     
+    def _on_arm_roll_slider_value_changed(self, value):
+        try:
+          str = "<Ax%+05d>" % (value*10)
+          self._widget.ledt_arm_roll_move.setText(
+            "%.1f" % (value))
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_arm_roll_move_neg_button_pressed(self):
+        self._widget.hsld_arm_roll_move.setValue(
+          self._widget.hsld_arm_roll_move.value() - 1)
+        
+    def _on_arm_roll_move_pos_button_pressed(self):
+        self._widget.hsld_arm_roll_move.setValue(
+          self._widget.hsld_arm_roll_move.value() + 1)
+          
+#ROTATION PITCH                     
+    def _on_arm_pitch_slider_value_changed(self, value):
+        try:
+          str = "<Ay%+05d>" % (value*10)
+          self._widget.ledt_arm_pitch_move.setText(
+            "%.1f" % (value))
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_arm_pitch_move_neg_button_pressed(self):
+        self._widget.hsld_arm_pitch_move.setValue(
+          self._widget.hsld_arm_pitch_move.value() - 1)
+        
+    def _on_arm_pitch_move_pos_button_pressed(self):
+        self._widget.hsld_arm_pitch_move.setValue(
+          self._widget.hsld_arm_pitch_move.value() + 1)            
+
+#ROTATION YAW                     
+    def _on_arm_yaw_slider_value_changed(self, value):
+        try:
+          str = "<Az%+05d>" % (value*10)
+          self._widget.ledt_arm_yaw_move.setText(
+            "%.1f" % (value))
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_arm_yaw_move_neg_button_pressed(self):
+        self._widget.hsld_arm_yaw_move.setValue(
+          self._widget.hsld_arm_yaw_move.value() - 1)
+        
+    def _on_arm_yaw_move_pos_button_pressed(self):
+        self._widget.hsld_arm_yaw_move.setValue(
+          self._widget.hsld_arm_yaw_move.value() + 1)
+          
+#GRIPPER OPEN                    
+    def _on_gripper_open_slider_value_changed(self, value):
+        try:
+          self._widget.ledt_gripper_open_move.setText(
+            "%.1f" % (value + self._widget.hsld_gripper_offset_move.value()))
+          self._widget.ledt_gripper_open_move_2.setText(
+            "%.1f" % (value + self._widget.hsld_gripper_offset_move.value()))
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_gripper_open_move_neg_button_pressed(self):
+        self._widget.hsld_gripper_open_move.setValue(
+          self._widget.hsld_gripper_open_move.value() - 1)
+        self._widget.hsld_gripper_open_move_2.setValue(
+          self._widget.hsld_gripper_open_move_2.value() - 1)
+                  
+    def _on_gripper_open_move_pos_button_pressed(self):
+        self._widget.hsld_gripper_open_move.setValue(
+          self._widget.hsld_gripper_open_move_2.value() + 1)
+        self._widget.hsld_gripper_open_move.setValue(
+          self._widget.hsld_gripper_open_move_2.value() + 1)
+                    
+    def _on_gripper_open_button_pressed(self):
+        try:
+          str = "<G01COP%06d>" % self._widget.hsld_gripper_open_move.value()
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+
+#GRIPPER CLOSE          
+    def _on_gripper_close_slider_value_changed(self, value):
+        try: 
+          self._widget.ledt_gripper_close_move.setText(
+            "%.1f" % (value + self._widget.hsld_gripper_offset_move.value()))
+          self._widget.ledt_gripper_close_move_2.setText(
+            "%.1f" % (value + self._widget.hsld_gripper_offset_move.value()))
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_gripper_close_move_neg_button_pressed(self):
+        self._widget.hsld_gripper_close_move.setValue(
+          self._widget.hsld_gripper_close_move.value() - 1)
+        self._widget.hsld_gripper_close_move_2.setValue(
+          self._widget.hsld_gripper_close_move.value() - 1)
+        
+    def _on_gripper_close_move_pos_button_pressed(self):
+        self._widget.hsld_gripper_close_move.setValue(
+          self._widget.hsld_gripper_close_move.value() + 1)
+        self._widget.hsld_gripper_close_move_2.setValue(
+          self._widget.hsld_gripper_close_move.value() + 1)
+                    
+    def _on_gripper_close_button_pressed(self):
+        try:
+          str = "<G01CGR%06d>" % self._widget.hsld_gripper_close_move.value()
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+
+
+######       FKT AXIS FORCE           ##########################################
+
+#7th AXIS                   
+    def _on_7th_axis_slider_value_changed(self, value):
+        try:
+          str = "<M15P%+05d>" % (value*10)
+          self._widget.ledt_7th_axis_move.setText(
+            "%.1f" % (value))
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_7th_axis_move_neg_button_pressed(self):
+        self._widget.hsld_7th_axis_move.setValue(
+          self._widget.hsld_7th_axis_move.value() - 1)
+  
+    def _on_7th_axis_move_pos_button_pressed(self):
+        self._widget.hsld_7th_axis_move.setValue(
+          self._widget.hsld_7th_axis_move.value() + 1)
+
+    def _on_7th_axis_move_home_button_pressed(self):
+        self._widget.hsld_7th_axis_move.setValue(0)
+        
+#6th AXIS                     
+    def _on_6th_axis_slider_value_changed(self, value):
+        try:
+          str = "<M14P%+05d>" % (value*10)
+          self._widget.ledt_6th_axis_move.setText(
+            "%.1f" % (value))
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_6th_axis_move_neg_button_pressed(self):
+        self._widget.hsld_6th_axis_move.setValue(
+          self._widget.hsld_6th_axis_move.value() - 1)
+        
+    def _on_6th_axis_move_pos_button_pressed(self):
+        self._widget.hsld_6th_axis_move.setValue(
+          self._widget.hsld_6th_axis_move.value() + 1)
+
+    def _on_6th_axis_move_home_button_pressed(self):
+        self._widget.hsld_6th_axis_move.setValue(0)
+                
+#5th AXIS                     
+    def _on_5th_axis_slider_value_changed(self, value):
+        try:
+          str = "<M13P%+05d>" % (value*10)
+          self._widget.ledt_5th_axis_move.setText(
+            "%.1f" % (value))
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_5th_axis_move_neg_button_pressed(self):
+        self._widget.hsld_5th_axis_move.setValue(
+          self._widget.hsld_5th_axis_move.value() - 1)
+        
+    def _on_5th_axis_move_pos_button_pressed(self):
+        self._widget.hsld_5th_axis_move.setValue(
+          self._widget.hsld_5th_axis_move.value() + 1)
+
+    def _on_5th_axis_move_home_button_pressed(self):
+        self._widget.hsld_5th_axis_move.setValue(60)
+        
+#4th AXIS                     
+    def _on_4th_axis_slider_value_changed(self, value):
+        try:
+          str = "<M12P%+05d>" % (value*10)
+          self._widget.ledt_4th_axis_move.setText(
+            "%.1f" % (value))
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_4th_axis_move_neg_button_pressed(self):
+        self._widget.hsld_4th_axis_move.setValue(
+          self._widget.hsld_4th_axis_move.value() - 1)
+        
+    def _on_4th_axis_move_pos_button_pressed(self):
+        self._widget.hsld_4th_axis_move.setValue(
+          self._widget.hsld_4th_axis_move.value() + 1)
+
+    def _on_4th_axis_move_home_button_pressed(self):
+        self._widget.hsld_4th_axis_move.setValue(-174)
+                  
+#3rd AXIS                     
+    def _on_3rd_axis_slider_value_changed(self, value):
+        try:
+          str = "<M11P%+05d>" % (value*10)
+          self._widget.ledt_3rd_axis_move.setText(
+            "%.1f" % (value))
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+        
+    def _on_3rd_axis_move_neg_button_pressed(self):
+        self._widget.hsld_3rd_axis_move.setValue(
+          self._widget.hsld_3rd_axis_move.value() - 1)
+        
+    def _on_3rd_axis_move_pos_button_pressed(self):
+        self._widget.hsld_3rd_axis_move.setValue(
+          self._widget.hsld_3rd_axis_move.value() + 1)            
+
+    def _on_3rd_axis_move_home_button_pressed(self):
+        self._widget.hsld_3rd_axis_move.setValue(166)
+                  
+#GRIPPER OPEN 2                   
+    #Calls GRIPPER OPEN
+    
+#GRIPPER CLOSE 2
+    #Calls GRIPPER CLOSE          
+
+              
+"""
+    def shutdown_plugin(self):
+        # TODO unregister all publishers here
+        pass
+        
+    def save_settings(self, plugin_settings, instance_settings):
+        # TODO save intrinsic configuration, usually using:
+        # instance_settings.set_value(k, v)
+        pass
+        
+    def restore_settings(self, plugin_settings, instance_settings):
+        # TODO restore intrinsic configuration, usually using:
+        # v = instance_settings.value(k)
+        pass
+        
+    #def trigger_configuration(self):
+        # Comment in to signal that the plugin has a way to configure it
+        # Usually used to open a configuration dialog
+"""        

@@ -1,0 +1,27 @@
+<package>
+  <description brief="rrt_rqt_plugin_status">
+
+     rrt_rqt_plugin_status
+
+  </description>
+  <author>rrt.fh-wels.at; Iris Grininger</author>
+  <license>BSD</license>
+  <review status="unreviewed" notes=""/>
+  <url></url>
+  
+  <depend package="std_msgs"/>
+  <depend package="rqt_gui"/>
+  <depend package="rqt_gui_py"/>
+  <depend package="rostopic"/>
+  <depend package="rrt_cmd_vel_serial"/>
+  <depend package="tf"/>
+  <depend package="worldmodel_msgs"/>
+  <depend package="rrt_msgs"/>
+  
+  <export>
+    <rqt_gui plugin="${prefix}/rrt_rqt_plugin_status.xml"/>
+  </export>
+
+</package>
+
+

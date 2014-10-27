@@ -1,0 +1,101 @@
+import os
+import rospy
+import rospkg
+import time
+import roslib
+roslib.load_manifest('SS2013_rqt_plugin_mark_robot')
+
+from qt_gui.plugin import Plugin
+from python_qt_binding import loadUi
+from python_qt_binding.QtCore import *
+from python_qt_binding.QtGui import *
+from std_msgs.msg import String
+from std_msgs.msg import Int16
+from sensor_msgs.msg import JointState
+from rrt_communication.msg import Accu
+from math import pi
+
+
+#TODO: serial_out checken
+WAIT_PUB_SERIAL_OUT = 0.02    #waiting after pub new value at serial_out topic
+
+
+class SS2013RqtPluginMarkRobot(Plugin):
+    
+    def __init__(self, context):
+        super(RRTRqtPluginMarkRobot, self).__init__(context)
+        self.setObjectName('SS2013RqtPluginMarkRobot')
+        
+        # Process standalone plugin command-line arguments
+        from argparse import ArgumentParser
+        parser = ArgumentParser()
+        # Add argument(s) to the parser.
+        parser.add_argument("-q", "--quiet", action="store_true",
+                      dest="quiet",
+                      help="Put plugin in silent mode")
+        args, unknowns = parser.parse_known_args(context.argv())
+        if not args.quiet:
+            print 'arguments: ', args
+            print 'unknowns: ', unknowns
+        
+        self._widget = QWidget()
+        rp = rospkg.RosPack()
+        ui_file = os.path.join(rp.get_path('SS2013_rqt_plugin_mark_robot'),
+          'resource', 'SS2013_rqt_plugin_mark_robot.ui')
+        loadUi(ui_file,  self._widget)
+        self._widget.setObjectName('SS2013RqtPluginMarkRobotUI')
+        # Show _widget.windowTitle on left-top of each plugin (when 
+        # it's set in _widget). This is useful when you open multiple 
+        # plugins at once. Also if you open multiple instances of your 
+        # plugin at once, these lines add number to make it easy to 
+        # tell from pane to pane.
+        if context.serial_number() > 1:
+            self._widget.setWindowTitle(self._widget.windowTitle() + 
+              (' (%d)' % context.serial_number()))
+        # Add widget to the user interface
+        context.add_widget(self._widget)
+
+        self._pub_serial_out = rospy.Publisher('serial_out', String)        
+
+
+        self._widget.pbtn_head_cam_light_on.pressed.connect(
+          self._on_head_cam_light_on_button_pressed)          
+        self._widget.pbtn_head_cam_light_off.pressed.connect(
+          self._on_head_cam_light_off_button_pressed)
+
+    def _on_head_cam_light_on_button_pressed(self):
+        try:
+          str = "<R01C00000001>"
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+          
+    def _on_head_cam_light_off_button_pressed(self):
+        try:
+          str = "<R01C00000000>"
+          self._pub_serial_out.publish(String(str))
+          time.sleep(WAIT_PUB_SERIAL_OUT)
+        except rospy.ServiceException, e:
+          print("Service call failed")
+
+   
+"""
+    def shutdown_plugin(self):
+        # TODO unregister all publishers here
+        pass
+        
+    def save_settings(self, plugin_settings, instance_settings):
+        # TODO save intrinsic configuration, usually using:
+        # instance_settings.set_value(k, v)
+        pass
+        
+    def restore_settings(self, plugin_settings, instance_settings):
+        # TODO restore intrinsic configuration, usually using:
+        # v = instance_settings.value(k)
+        pass
+        
+    #def trigger_configuration(self):
+        # Comment in to signal that the plugin has a way to configure it
+        # Usually used to open a configuration dialog
+"""        

@@ -1,0 +1,20 @@
+<library path="src/rrt_rqt_plugin_status">
+
+  <class name="RRTRqtPluginStatus" type="rrt_rqt_plugin_status.RRTRqtPluginStatus" base_class_type="rqt_gui_py::Plugin">
+
+    <description>
+      A Python GUI plugin to perform Robot Control Dialog for RRT Roboter MARK
+    </description>
+    <qtgui>
+      <group>
+        <label>RRT Plugins rosbuild</label>
+        <icon type="theme">folder</icon>
+        <statustip>Plugins related to robot tools.</statustip>
+      </group>
+
+      <label>rrt_rqt_plugin_status</label>
+      <icon type="theme">input-gaming</icon>
+      <statustip>control Robot functionality for RRT Roboter MARK.</statustip>
+    </qtgui>
+  </class>
+</library>

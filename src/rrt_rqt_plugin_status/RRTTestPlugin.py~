@@ -1,0 +1,85 @@
+import os
+import rospy
+import rospkg
+
+import roslib
+roslib.load_manifest('rrt_test_plugin')
+
+from qt_gui.plugin import Plugin
+from python_qt_binding import loadUi
+from python_qt_binding.QtCore import QEvent, QObject, Qt, QTimer, Signal, Slot
+from python_qt_binding.QtGui import QWidget#, QPushButton, QHBoxLayout, QVBoxLayout, QLabel
+
+
+#from std_msgs.msg import String
+
+class RRTTestPlugin(Plugin):
+
+    def __init__(self, context):
+				super(RRTTestPlugin, self).__init__(context)
+				self.setObjectName('RRTTestPlugin')
+				
+				# Process standalone plugin command-line arguments
+				from argparse import ArgumentParser
+				parser = ArgumentParser()
+				# Add argument(s) to the parser.
+				parser.add_argument("-q", "--quiet", action="store_true",
+								      dest="quiet",
+								      help="Put plugin in silent mode")
+				args, unknowns = parser.parse_known_args(context.argv())
+				if not args.quiet:
+						print 'arguments: ', args
+						print 'unknowns: ', unknowns
+				
+				self._widget = QWidget()
+				
+				rp = rospkg.RosPack()
+				ui_file = os.path.join(rp.get_path('rrt_test_plugin'), 'resource', 'RRTTestPlugin.ui')
+				loadUi(ui_file,  self._widget)
+				
+				
+				self._widget.setObjectName('RRTTestPluginUi')
+				# Show _widget.windowTitle on left-top of each plugin (when 
+				# it's set in _widget). This is useful when you open multiple 
+				# plugins at once. Also if you open multiple instances of your 
+				# plugin at once, these lines add number to make it easy to 
+				# tell from pane to pane.
+				if context.serial_number() > 1:
+						self._widget.setWindowTitle(self._widget.windowTitle() + (' (%d)' % context.serial_number()))
+				# Add widget to the user interface
+				context.add_widget(self._widget)
+				
+				
+				pbtn_open_gripper.pressed.connect(self.on_pbtn_open_gripper_pressed)
+"""				
+		def on_pbtn_open_gripper_pressed(self):
+            
+        try:
+					pub1 = rospy.Publisher('serial_out', String)
+					pub2 = rospy.Publisher('test_chatter', String)
+					str = "<G01CHM000001>"
+					pub1.publish(String(str))
+					pub2.publish(String(str))
+            
+        except rospy.ServiceException, e:
+	  	print("Service call failed")
+"""			
+"""
+		def shutdown_plugin(self):
+				# TODO unregister all publishers here
+				pass
+				
+		def save_settings(self, plugin_settings, instance_settings):
+				# TODO save intrinsic configuration, usually using:
+				# instance_settings.set_value(k, v)
+				pass
+				
+		def restore_settings(self, plugin_settings, instance_settings):
+				# TODO restore intrinsic configuration, usually using:
+				# v = instance_settings.value(k)
+				pass
+				
+		#def trigger_configuration(self):
+				# Comment in to signal that the plugin has a way to configure it
+				# Usually used to open a configuration dialog
+"""				

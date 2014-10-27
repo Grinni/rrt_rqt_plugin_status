@@ -1,0 +1,248 @@
+import os
+import rospy
+import rospkg
+import time
+import roslib
+roslib.load_manifest('rrt_rqt_plugin_mark_robot')
+
+from qt_gui.plugin import Plugin
+from python_qt_binding import loadUi
+from python_qt_binding.QtCore import *
+from python_qt_binding.QtGui import *
+from std_msgs.msg import String
+from std_msgs.msg import Int16
+from sensor_msgs.msg import JointState
+from rrt_communication.msg import Accu
+from worldmodel_msgs.srv import AddObject
+from worldmodel_msgs.msg import ObjectState
+from math import pi
+
+### LineEdit Background colours
+LEDT_COLOUR_WHITE = "QLineEdit { background-color : rgb(255, 255, 255) }"
+LEDT_COLOUR_YELLOW = "QLineEdit { background-color : rgb(255, 255, 0) }"
+LEDT_COLOUR_ORANGE = "QLineEdit { background-color : rgb(255, 170, 0) }"
+### Def. times
+#TODO: serial_out checken
+WAIT_PUB_SERIAL_OUT = 0.02    #waiting after pub new value at serial_out topic
+
+
+#TODO: FKT DEF richtig zuordnen (Allgemein/Settings)
+#TODO: Konstanten definieren!
+#TODO: Absolute Pfadangaben raus!
+#TODO: Modularisieren!
+#TODO: Hartcodierung in Code und UI vermeiden (UI default value slider und 
+#      default value Anzeige slider jeweils hart codiert. Soll aus Code kommen)
+#TODO: Konstruktor, Destruktor, self,....
+#TODO: Privater und globaler Namensraum
+
+
+######       FKT SAVE POSITIONS       ##########################################
+
+ 
+    def _on_save_pos_1_button_pressed(self):
+        self._widget.ledt_x_saved_pos_1.setText(
+            "%.1f" % (self._widget.hsld_arm_x_move.value()))
+        self._widget.ledt_y_saved_pos_1.setText(
+            "%.1f" % (self._widget.hsld_arm_y_move.value()))
+        self._widget.ledt_z_saved_pos_1.setText(
+            "%.1f" % (self._widget.hsld_arm_z_move.value()))
+        self._widget.ledt_roll_saved_pos_1.setText(
+            "%.1f" % (self._widget.hsld_arm_roll_move.value()))
+        self._widget.ledt_pitch_saved_pos_1.setText(
+            "%.1f" % (self._widget.hsld_arm_pitch_move.value()))
+        self._widget.ledt_yaw_saved_pos_1.setText(
+            "%.1f" % (self._widget.hsld_arm_yaw_move.value()))
+
+    def _on_save_pos_2_button_pressed(self):
+        self._widget.ledt_x_saved_pos_2.setText(
+            "%.1f" % (self._widget.hsld_arm_x_move.value()))
+        self._widget.ledt_y_saved_pos_2.setText(
+            "%.1f" % (self._widget.hsld_arm_y_move.value()))
+        self._widget.ledt_z_saved_pos_2.setText(
+            "%.1f" % (self._widget.hsld_arm_z_move.value()))
+        self._widget.ledt_roll_saved_pos_2.setText(
+            "%.1f" % (self._widget.hsld_arm_roll_move.value()))
+        self._widget.ledt_pitch_saved_pos_2.setText(
+            "%.1f" % (self._widget.hsld_arm_pitch_move.value()))
+        self._widget.ledt_yaw_saved_pos_2.setText(
+            "%.1f" % (self._widget.hsld_arm_yaw_move.value()))
+            
+    def _on_save_pos_3_button_pressed(self):
+        self._widget.ledt_x_saved_pos_3.setText(
+            "%.1f" % (self._widget.hsld_arm_x_move.value()))
+        self._widget.ledt_y_saved_pos_3.setText(
+            "%.1f" % (self._widget.hsld_arm_y_move.value()))
+        self._widget.ledt_z_saved_pos_3.setText(
+            "%.1f" % (self._widget.hsld_arm_z_move.value()))
+        self._widget.ledt_roll_saved_pos_3.setText(
+            "%.1f" % (self._widget.hsld_arm_roll_move.value()))
+        self._widget.ledt_pitch_saved_pos_3.setText(
+            "%.1f" % (self._widget.hsld_arm_pitch_move.value()))
+        self._widget.ledt_yaw_saved_pos_3.setText(
+            "%.1f" % (self._widget.hsld_arm_yaw_move.value()))
+            
+    def _on_save_pos_4_button_pressed(self):
+        self._widget.ledt_x_saved_pos_4.setText(
+            "%.1f" % (self._widget.hsld_arm_x_move.value()))
+        self._widget.ledt_y_saved_pos_4.setText(
+            "%.1f" % (self._widget.hsld_arm_y_move.value()))
+        self._widget.ledt_z_saved_pos_4.setText(
+            "%.1f" % (self._widget.hsld_arm_z_move.value()))
+        self._widget.ledt_roll_saved_pos_4.setText(
+            "%.1f" % (self._widget.hsld_arm_roll_move.value()))
+        self._widget.ledt_pitch_saved_pos_4.setText(
+            "%.1f" % (self._widget.hsld_arm_pitch_move.value()))
+        self._widget.ledt_yaw_saved_pos_4.setText(
+            "%.1f" % (self._widget.hsld_arm_yaw_move.value()))            
+                        
+    def _on_save_pos_5_button_pressed(self):
+        self._widget.ledt_x_saved_pos_5.setText(
+            "%.1f" % (self._widget.hsld_arm_x_move.value()))
+        self._widget.ledt_y_saved_pos_5.setText(
+            "%.1f" % (self._widget.hsld_arm_y_move.value()))
+        self._widget.ledt_z_saved_pos_5.setText(
+            "%.1f" % (self._widget.hsld_arm_z_move.value()))
+        self._widget.ledt_roll_saved_pos_5.setText(
+            "%.1f" % (self._widget.hsld_arm_roll_move.value()))
+        self._widget.ledt_pitch_saved_pos_5.setText(
+            "%.1f" % (self._widget.hsld_arm_pitch_move.value()))
+        self._widget.ledt_yaw_saved_pos_5.setText(
+            "%.1f" % (self._widget.hsld_arm_yaw_move.value()))
+            
+                             
+    def _on_set_pos_1_button_pressed(self):
+        self._arm_set_pos(int(self._widget.ledt_x_saved_pos_1.text()[:-2]),
+                          int(self._widget.ledt_y_saved_pos_1.text()[:-2]),
+                          int(self._widget.ledt_z_saved_pos_1.text()[:-2]),
+                          int(self._widget.ledt_roll_saved_pos_1.text()[:-2]),
+                          int(self._widget.ledt_pitch_saved_pos_1.text()[:-2]),
+                          int(self._widget.ledt_yaw_saved_pos_1.text()[:-2]))
+
+    def _on_set_pos_2_button_pressed(self):
+        self._arm_set_pos(int(self._widget.ledt_x_saved_pos_2.text()[:-2]),
+                          int(self._widget.ledt_y_saved_pos_2.text()[:-2]),
+                          int(self._widget.ledt_z_saved_pos_2.text()[:-2]),
+                          int(self._widget.ledt_roll_saved_pos_2.text()[:-2]),
+                          int(self._widget.ledt_pitch_saved_pos_2.text()[:-2]),
+                          int(self._widget.ledt_yaw_saved_pos_2.text()[:-2]))
+        
+    def _on_set_pos_3_button_pressed(self):
+        self._arm_set_pos(int(self._widget.ledt_x_saved_pos_3.text()[:-2]),
+                          int(self._widget.ledt_y_saved_pos_3.text()[:-2]),
+                          int(self._widget.ledt_z_saved_pos_3.text()[:-2]),
+                          int(self._widget.ledt_roll_saved_pos_3.text()[:-2]),
+                          int(self._widget.ledt_pitch_saved_pos_3.text()[:-2]),
+                          int(self._widget.ledt_yaw_saved_pos_3.text()[:-2]))
+
+    def _on_set_pos_4_button_pressed(self):
+        self._arm_set_pos(int(self._widget.ledt_x_saved_pos_4.text()[:-2]),
+                          int(self._widget.ledt_y_saved_pos_4.text()[:-2]),
+                          int(self._widget.ledt_z_saved_pos_4.text()[:-2]),
+                          int(self._widget.ledt_roll_saved_pos_4.text()[:-2]),
+                          int(self._widget.ledt_pitch_saved_pos_4.text()[:-2]),
+                          int(self._widget.ledt_yaw_saved_pos_4.text()[:-2]))
+        
+    def _on_set_pos_5_button_pressed(self):
+        self._arm_set_pos(int(self._widget.ledt_x_saved_pos_5.text()[:-2]),
+                          int(self._widget.ledt_y_saved_pos_5.text()[:-2]),
+                          int(self._widget.ledt_z_saved_pos_5.text()[:-2]),
+                          int(self._widget.ledt_roll_saved_pos_5.text()[:-2]),
+                          int(self._widget.ledt_pitch_saved_pos_5.text()[:-2]),
+                          int(self._widget.ledt_yaw_saved_pos_5.text()[:-2]))        
+        
+
+    def _arm_set_pos(self, value_x, value_y, value_z, value_roll, value_pitch, value_yaw):
+        actual_x = self._widget.hsld_arm_x_move.value()
+        target_x = value_x
+        actual_y = self._widget.hsld_arm_y_move.value()
+        target_y = value_y
+        actual_z = self._widget.hsld_arm_z_move.value()
+        target_z = value_z
+        actual_roll = self._widget.hsld_arm_roll_move.value()
+        target_roll = value_roll
+        actual_pitch = self._widget.hsld_arm_pitch_move.value()
+        target_pitch = value_pitch
+        actual_yaw = self._widget.hsld_arm_yaw_move.value()
+        target_yaw = value_yaw
+            
+        while ( actual_x <> target_x or 
+                actual_y <> target_y or 
+                actual_z <> target_z or
+                actual_roll <> target_roll or
+                actual_pitch <> target_pitch or
+                actual_yaw <> target_yaw):
+        #TRANSLAT_X  
+            if abs(actual_x - target_x) >= 10:
+                if actual_x > target_x:
+                    self._widget.hsld_arm_x_move.setValue(actual_x - 10)
+                else:
+                    self._widget.hsld_arm_x_move.setValue(actual_x + 10)
+            else:
+                if actual_x > target_x:
+                    self._widget.hsld_arm_x_move.setValue(actual_x - 1)
+                elif actual_x < target_x:
+                    self._widget.hsld_arm_x_move.setValue(actual_x + 1)
+            #TODO: check if time.sleep is the best way to do this
+            actual_x = self._widget.hsld_arm_x_move.value()
+        #TRANSLAT_Y  
+            if abs(actual_y - target_y) >= 10:
+                if actual_y > target_y:
+                    self._widget.hsld_arm_y_move.setValue(actual_y - 10)
+                else:
+                    self._widget.hsld_arm_y_move.setValue(actual_y + 10)
+            else:
+                if actual_y > target_y:
+                    self._widget.hsld_arm_y_move.setValue(actual_y - 1)
+                elif actual_y < target_y:
+                    self._widget.hsld_arm_y_move.setValue(actual_y + 1)
+            actual_y = self._widget.hsld_arm_y_move.value()
+        #TRANSLAT_Z
+            if abs(actual_z - target_z) >= 10:
+                if actual_z > target_z:
+                    self._widget.hsld_arm_z_move.setValue(actual_z - 10)
+                else:
+                    self._widget.hsld_arm_z_move.setValue(actual_z + 10)
+            else:
+                if actual_z > target_z:
+                    self._widget.hsld_arm_z_move.setValue(actual_z - 1)
+                elif actual_z < target_z:
+                    self._widget.hsld_arm_z_move.setValue(actual_z + 1)
+            actual_z = self._widget.hsld_arm_z_move.value()
+        #ROTAT_ROLL
+            if abs(actual_roll - target_roll) >= 10:
+                if actual_roll > target_roll:
+                    self._widget.hsld_arm_roll_move.setValue(actual_roll - 10)
+                else:
+                    self._widget.hsld_arm_roll_move.setValue(actual_roll + 10)
+            else:
+                if actual_roll > target_roll:
+                    self._widget.hsld_arm_roll_move.setValue(actual_roll - 1)
+                elif actual_roll < target_roll:
+                    self._widget.hsld_arm_roll_move.setValue(actual_roll + 1)
+            actual_roll = self._widget.hsld_arm_roll_move.value()
+        #ROTAT_PITCH
+            if abs(actual_pitch - target_pitch) >= 10:
+                if actual_pitch > target_pitch:
+                    self._widget.hsld_arm_pitch_move.setValue(actual_pitch - 10)
+                else:
+                    self._widget.hsld_arm_pitch_move.setValue(actual_pitch + 10)
+            else:
+                if actual_pitch > target_pitch:
+                    self._widget.hsld_arm_pitch_move.setValue(actual_pitch - 1)
+                elif actual_pitch < target_pitch:
+                    self._widget.hsld_arm_pitch_move.setValue(actual_pitch + 1)
+            actual_pitch = self._widget.hsld_arm_pitch_move.value()
+        #ROTAT_YAW
+            if abs(actual_yaw - target_yaw) >= 10:
+                if actual_yaw > target_yaw:
+                    self._widget.hsld_arm_yaw_move.setValue(actual_yaw - 10)
+                else:
+                    self._widget.hsld_arm_yaw_move.setValue(actual_yaw + 10)
+            else:
+                if actual_yaw > target_yaw:
+                    self._widget.hsld_arm_yaw_move.setValue(actual_yaw - 1)
+                elif actual_yaw < target_yaw:
+                    self._widget.hsld_arm_yaw_move.setValue(actual_yaw + 1)
+            actual_yaw = self._widget.hsld_arm_yaw_move.value()
+                
+

@@ -1,0 +1,333 @@
+#from python_qt_binding.QtCore import *
+from python_qt_binding.QtGui import *
+######       DEF ALLGEMEIN            ##########################################
+#COUNTDOWN
+self.timerCountdown = QTimer()
+self.timerCountdown.setInterval(1000)
+self.timerCountdown.setSingleShot(False)
+self.timerCountdown.timeout.connect(self.dec_countdown)
+self._widget.pbtn_countdown_start.pressed.connect(
+  self.timerCountdown.start)
+self._widget.pbtn_countdown_pause.pressed.connect(
+  self.timerCountdown.stop)
+self._widget.pbtn_countdown_reset.pressed.connect(
+  self._on_countdown_reset_button_pressed)          
+
+#EMERGENCY STOP
+self._widget.pbtn_emergency_stop.pressed.connect(
+  self._on_emergency_stop_button_pressed)
+
+#ACCU
+self._topic_name = 'accu'
+self.message_class = Accu
+self._subscriber = rospy.Subscriber(
+  self._topic_name, self.message_class, self.callback_accu)  
+self.connect(self, SIGNAL("new_value_accu1"), self.set_ledt_accu1)
+self.connect(self, SIGNAL("new_value_accu2"), self.set_ledt_accu2)
+
+#CO2
+self._topic_name = 'co2'
+self.message_class = Int16
+self._subscriber = rospy.Subscriber(
+  self._topic_name, self.message_class, self.callback_co2)  
+self.connect(self, SIGNAL("new_value_co2"), self.set_ledt_co2)
+
+#VICTIM_DETECTET
+self._topic_name = 'thermocam/string'
+self.message_class = String
+self._subscriber = rospy.Subscriber(
+  self._topic_name, self.message_class, self.callback_victim_detected)  
+self.connect(self, SIGNAL("new_value_victim_detected"),          
+  self.set_ledt_victim_detected)
+self._widget.pbtn_victim_detected_confirm.pressed.connect(
+  self._on_victim_detected_confirm_button_pressed)
+self._widget.pbtn_victim_detected_cancel.pressed.connect(
+  self._on_victim_detected_cancel_button_pressed)
+
+#MARK_DIV_ON_OFF
+self._widget.pbtn_homing.pressed.connect(
+  self._on_homing_button_pressed)
+self._widget.pbtn_inverse_on.pressed.connect(
+  self._on_inverse_on_button_pressed)
+self._widget.pbtn_inverse_off.pressed.connect(
+  self._on_inverse_off_button_pressed)
+self._widget.pbtn_motor_on.pressed.connect(
+  self._on_motor_on_button_pressed)
+self._widget.pbtn_motor_off.pressed.connect(
+  self._on_motor_off_button_pressed)
+self._widget.pbtn_relativ_on.pressed.connect(
+  self._on_relativ_on_button_pressed)
+self._widget.pbtn_relativ_off.pressed.connect(
+  self._on_relativ_off_button_pressed)
+
+######       DEF SETTINGS             ##########################################
+
+self._widget.hsld_gripper_offset_move.valueChanged.connect(
+  self._on_gripper_offset_slider_value_changed)
+self._widget.pbtn_gripper_offset_move_neg.pressed.connect(
+  self._on_gripper_offset_move_neg_button_pressed)        
+self._widget.pbtn_gripper_offset_move_pos.pressed.connect(
+  self._on_gripper_offset_move_pos_button_pressed)    
+
+self._widget.hsld_gripper_force_move.valueChanged.connect(
+  self._on_gripper_force_slider_value_changed)
+self._widget.pbtn_gripper_force_move_neg.pressed.connect(
+  self._on_gripper_force_move_neg_button_pressed)        
+self._widget.pbtn_gripper_force_move_pos.pressed.connect(
+  self._on_gripper_force_move_pos_button_pressed)  
+
+self._widget.pbtn_head_cam_light_on.pressed.connect(
+  self._on_head_cam_light_on_button_pressed)          
+self._widget.pbtn_head_cam_light_off.pressed.connect(
+  self._on_head_cam_light_off_button_pressed)
+
+self._widget.hsld_front_cam_move.valueChanged.connect(
+  self._on_front_cam_slider_value_changed)
+self._widget.pbtn_front_cam_move_neg.pressed.connect(
+  self._on_front_cam_move_neg_button_pressed)        
+self._widget.pbtn_front_cam_move_pos.pressed.connect(
+  self._on_front_cam_move_pos_button_pressed)  
+
+self._widget.hsld_back_cam_move.valueChanged.connect(
+  self._on_back_cam_slider_value_changed)
+self._widget.pbtn_back_cam_move_neg.pressed.connect(
+  self._on_back_cam_move_neg_button_pressed)        
+self._widget.pbtn_back_cam_move_pos.pressed.connect(
+  self._on_back_cam_move_pos_button_pressed)
+    
+######       DEF FLIPPER CONTROL      ##########################################
+
+#LEFT_FRONT
+self._widget.hsld_flipper_left_front_move.valueChanged.connect(
+  self._on_flipper_left_front_slider_value_changed)
+self._widget.pbtn_flipper_left_front_move_neg.pressed.connect(
+  self._on_flipper_left_front_move_neg_button_pressed)        
+self._widget.pbtn_flipper_left_front_move_pos.pressed.connect(
+  self._on_flipper_left_front_move_pos_button_pressed)
+self._widget.pbtn_flipper_left_front_move_home.pressed.connect(
+  self._on_flipper_left_front_move_home_button_pressed)
+#RIGHT_FRONT
+self._widget.hsld_flipper_right_front_move.valueChanged.connect(
+  self._on_flipper_right_front_slider_value_changed)
+self._widget.pbtn_flipper_right_front_move_neg.pressed.connect(
+  self._on_flipper_right_front_move_neg_button_pressed)        
+self._widget.pbtn_flipper_right_front_move_pos.pressed.connect(
+  self._on_flipper_right_front_move_pos_button_pressed)
+self._widget.pbtn_flipper_right_front_move_home.pressed.connect(
+  self._on_flipper_right_front_move_home_button_pressed)
+#LEFT_BACK
+self._widget.hsld_flipper_left_back_move.valueChanged.connect(
+  self._on_flipper_left_back_slider_value_changed)
+self._widget.pbtn_flipper_left_back_move_neg.pressed.connect(
+  self._on_flipper_left_back_move_neg_button_pressed)        
+self._widget.pbtn_flipper_left_back_move_pos.pressed.connect(
+  self._on_flipper_left_back_move_pos_button_pressed)
+self._widget.pbtn_flipper_left_back_move_home.pressed.connect(
+  self._on_flipper_left_back_move_home_button_pressed)
+#RIGHT_BACK          
+self._widget.hsld_flipper_right_back_move.valueChanged.connect(
+  self._on_flipper_right_back_slider_value_changed)
+self._widget.pbtn_flipper_right_back_move_neg.pressed.connect(
+  self._on_flipper_right_back_move_neg_button_pressed)        
+self._widget.pbtn_flipper_right_back_move_pos.pressed.connect(
+  self._on_flipper_right_back_move_pos_button_pressed)
+self._widget.pbtn_flipper_right_back_move_home.pressed.connect(
+  self._on_flipper_right_back_move_home_button_pressed)
+#LEFT        
+self._widget.hsld_flipper_left_move.valueChanged.connect(
+  self._on_flipper_left_slider_value_changed)
+self._widget.pbtn_flipper_left_move_neg.pressed.connect(
+  self._on_flipper_left_move_neg_button_pressed)        
+self._widget.pbtn_flipper_left_move_pos.pressed.connect(
+  self._on_flipper_left_move_pos_button_pressed)
+self._widget.pbtn_flipper_left_move_home.pressed.connect(
+  self._on_flipper_left_move_home_button_pressed)
+#RIGHT          
+self._widget.hsld_flipper_right_move.valueChanged.connect(
+  self._on_flipper_right_slider_value_changed)
+self._widget.pbtn_flipper_right_move_neg.pressed.connect(
+  self._on_flipper_right_move_neg_button_pressed)        
+self._widget.pbtn_flipper_right_move_pos.pressed.connect(
+  self._on_flipper_right_move_pos_button_pressed)
+self._widget.pbtn_flipper_right_move_home.pressed.connect(
+  self._on_flipper_right_move_home_button_pressed)
+#FRONT        
+self._widget.hsld_flipper_front_move.valueChanged.connect(
+  self._on_flipper_front_slider_value_changed)
+self._widget.pbtn_flipper_front_move_neg.pressed.connect(
+  self._on_flipper_front_move_neg_button_pressed)        
+self._widget.pbtn_flipper_front_move_pos.pressed.connect(
+  self._on_flipper_front_move_pos_button_pressed)
+self._widget.pbtn_flipper_front_move_home.pressed.connect(
+  self._on_flipper_front_move_home_button_pressed)
+#BACK                    
+self._widget.hsld_flipper_back_move.valueChanged.connect(
+  self._on_flipper_back_slider_value_changed)
+self._widget.pbtn_flipper_back_move_neg.pressed.connect(
+  self._on_flipper_back_move_neg_button_pressed)        
+self._widget.pbtn_flipper_back_move_pos.pressed.connect(
+  self._on_flipper_back_move_pos_button_pressed)
+self._widget.pbtn_flipper_back_move_home.pressed.connect(
+  self._on_flipper_back_move_home_button_pressed)
+#ALL          
+self._widget.hsld_flipper_all_move.valueChanged.connect(
+  self._on_flipper_all_slider_value_changed)
+self._widget.pbtn_flipper_all_move_neg.pressed.connect(
+  self._on_flipper_all_move_neg_button_pressed)        
+self._widget.pbtn_flipper_all_move_pos.pressed.connect(
+  self._on_flipper_all_move_pos_button_pressed)
+self._widget.pbtn_flipper_all_move_home.pressed.connect(
+  self._on_flipper_all_move_home_button_pressed)
+
+
+######       DEF ARM CONTROL          ##########################################
+
+#TRANSLAT X
+self._widget.hsld_arm_x_move.valueChanged.connect(
+  self._on_arm_x_slider_value_changed)
+self._widget.pbtn_arm_x_move_neg.pressed.connect(
+  self._on_arm_x_move_neg_button_pressed)        
+self._widget.pbtn_arm_x_move_pos.pressed.connect(
+  self._on_arm_x_move_pos_button_pressed)
+#TRANSLAT Y          
+self._widget.hsld_arm_y_move.valueChanged.connect(
+  self._on_arm_y_slider_value_changed)
+self._widget.pbtn_arm_y_move_neg.pressed.connect(
+  self._on_arm_y_move_neg_button_pressed)        
+self._widget.pbtn_arm_y_move_pos.pressed.connect(
+  self._on_arm_y_move_pos_button_pressed)
+#TRANSLAT Z          
+self._widget.hsld_arm_z_move.valueChanged.connect(
+  self._on_arm_z_slider_value_changed)
+self._widget.pbtn_arm_z_move_neg.pressed.connect(
+  self._on_arm_z_move_neg_button_pressed)        
+self._widget.pbtn_arm_z_move_pos.pressed.connect(
+  self._on_arm_z_move_pos_button_pressed)
+#ROLL
+self._widget.hsld_arm_roll_move.valueChanged.connect(
+  self._on_arm_roll_slider_value_changed)
+self._widget.pbtn_arm_roll_move_neg.pressed.connect(
+  self._on_arm_roll_move_neg_button_pressed)        
+self._widget.pbtn_arm_roll_move_pos.pressed.connect(
+  self._on_arm_roll_move_pos_button_pressed)
+#PITCH          
+self._widget.hsld_arm_pitch_move.valueChanged.connect(
+  self._on_arm_pitch_slider_value_changed)
+self._widget.pbtn_arm_pitch_move_neg.pressed.connect(
+  self._on_arm_pitch_move_neg_button_pressed)        
+self._widget.pbtn_arm_pitch_move_pos.pressed.connect(
+  self._on_arm_pitch_move_pos_button_pressed)
+#YAW          
+self._widget.hsld_arm_yaw_move.valueChanged.connect(
+  self._on_arm_yaw_slider_value_changed)
+self._widget.pbtn_arm_yaw_move_neg.pressed.connect(
+  self._on_arm_yaw_move_neg_button_pressed)        
+self._widget.pbtn_arm_yaw_move_pos.pressed.connect(
+  self._on_arm_yaw_move_pos_button_pressed)          
+#GRIPPER OPEN          
+self._widget.hsld_gripper_open_move.valueChanged.connect(
+  self._on_gripper_open_slider_value_changed)
+self._widget.pbtn_gripper_open_move_neg.pressed.connect(
+  self._on_gripper_open_move_neg_button_pressed)        
+self._widget.pbtn_gripper_open_move_pos.pressed.connect(
+  self._on_gripper_open_move_pos_button_pressed)
+self._widget.pbtn_gripper_open.pressed.connect(
+  self._on_gripper_open_button_pressed)
+#GRIPPER CLOSE                    
+self._widget.hsld_gripper_close_move.valueChanged.connect(
+  self._on_gripper_close_slider_value_changed)
+self._widget.pbtn_gripper_close_move_neg.pressed.connect(
+  self._on_gripper_close_move_neg_button_pressed)        
+self._widget.pbtn_gripper_close_move_pos.pressed.connect(
+  self._on_gripper_close_move_pos_button_pressed)
+self._widget.pbtn_gripper_close.pressed.connect(
+  self._on_gripper_close_button_pressed)
+
+######       DEF SAVE POSITIONS       ##########################################
+self._widget.pbtn_save_pos_1.pressed.connect(
+  self._on_save_pos_1_button_pressed)
+self._widget.pbtn_save_pos_2.pressed.connect(
+  self._on_save_pos_2_button_pressed)
+self._widget.pbtn_save_pos_3.pressed.connect(
+  self._on_save_pos_3_button_pressed)
+self._widget.pbtn_save_pos_4.pressed.connect(
+  self._on_save_pos_4_button_pressed)
+self._widget.pbtn_save_pos_5.pressed.connect(
+  self._on_save_pos_5_button_pressed)  
+self._widget.pbtn_set_pos_1.pressed.connect(
+  self._on_set_pos_1_button_pressed)
+self._widget.pbtn_set_pos_2.pressed.connect(
+  self._on_set_pos_2_button_pressed)
+self._widget.pbtn_set_pos_3.pressed.connect(
+  self._on_set_pos_3_button_pressed)
+self._widget.pbtn_set_pos_4.pressed.connect(
+  self._on_set_pos_4_button_pressed)
+self._widget.pbtn_set_pos_5.pressed.connect(
+  self._on_set_pos_5_button_pressed)
+  
+######       DEF AXIS FORCE           ##########################################
+
+#7th AXIS
+self._widget.hsld_7th_axis_move.valueChanged.connect(
+  self._on_7th_axis_slider_value_changed)
+self._widget.pbtn_7th_axis_move_neg.pressed.connect(
+  self._on_7th_axis_move_neg_button_pressed)        
+self._widget.pbtn_7th_axis_move_pos.pressed.connect(
+  self._on_7th_axis_move_pos_button_pressed)
+self._widget.pbtn_7th_axis_move_home.pressed.connect(
+  self._on_7th_axis_move_home_button_pressed)
+#6th AXIS          
+self._widget.hsld_6th_axis_move.valueChanged.connect(
+  self._on_6th_axis_slider_value_changed)
+self._widget.pbtn_6th_axis_move_neg.pressed.connect(
+  self._on_6th_axis_move_neg_button_pressed)        
+self._widget.pbtn_6th_axis_move_pos.pressed.connect(
+  self._on_6th_axis_move_pos_button_pressed)
+self._widget.pbtn_6th_axis_move_home.pressed.connect(
+  self._on_6th_axis_move_home_button_pressed)
+#5th AXIS          
+self._widget.hsld_5th_axis_move.valueChanged.connect(
+  self._on_5th_axis_slider_value_changed)
+self._widget.pbtn_5th_axis_move_neg.pressed.connect(
+  self._on_5th_axis_move_neg_button_pressed)        
+self._widget.pbtn_5th_axis_move_pos.pressed.connect(
+  self._on_5th_axis_move_pos_button_pressed)
+self._widget.pbtn_5th_axis_move_home.pressed.connect(
+  self._on_5th_axis_move_home_button_pressed)
+#4th AXIS
+self._widget.hsld_4th_axis_move.valueChanged.connect(
+  self._on_4th_axis_slider_value_changed)
+self._widget.pbtn_4th_axis_move_neg.pressed.connect(
+  self._on_4th_axis_move_neg_button_pressed)        
+self._widget.pbtn_4th_axis_move_pos.pressed.connect(
+  self._on_4th_axis_move_pos_button_pressed)
+self._widget.pbtn_4th_axis_move_home.pressed.connect(
+  self._on_4th_axis_move_home_button_pressed)
+#3rd AXIS       
+self._widget.hsld_3rd_axis_move.valueChanged.connect(
+  self._on_3rd_axis_slider_value_changed)
+self._widget.pbtn_3rd_axis_move_neg.pressed.connect(
+  self._on_3rd_axis_move_neg_button_pressed)        
+self._widget.pbtn_3rd_axis_move_pos.pressed.connect(
+  self._on_3rd_axis_move_pos_button_pressed)         
+self._widget.pbtn_3rd_axis_move_home.pressed.connect(
+  self._on_3rd_axis_move_home_button_pressed)
+#GRIPPER OPEN 2         
+self._widget.hsld_gripper_open_move_2.valueChanged.connect(
+  self._on_gripper_open_slider_value_changed)
+self._widget.pbtn_gripper_open_move_neg_2.pressed.connect(
+  self._on_gripper_open_move_neg_button_pressed)        
+self._widget.pbtn_gripper_open_move_pos_2.pressed.connect(
+  self._on_gripper_open_move_pos_button_pressed)
+self._widget.pbtn_gripper_open_2.pressed.connect(
+  self._on_gripper_open_button_pressed)
+#GRIPPER CLOSE 2                  
+self._widget.hsld_gripper_close_move_2.valueChanged.connect(
+  self._on_gripper_close_slider_value_changed)
+self._widget.pbtn_gripper_close_move_neg_2.pressed.connect(
+  self._on_gripper_close_move_neg_button_pressed)        
+self._widget.pbtn_gripper_close_move_pos_2.pressed.connect(
+  self._on_gripper_close_move_pos_button_pressed)
+self._widget.pbtn_gripper_close_2.pressed.connect(
+  self._on_gripper_close_button_pressed)
+
