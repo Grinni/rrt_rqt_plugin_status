@@ -27,8 +27,8 @@ from math import pi
 #from roslaunch.core import RLException
 
 from geometry_msgs.msg import Twist
-from worldmodel_msgs.srv import AddObject
-from worldmodel_msgs.msg import ObjectState
+from hector_worldmodel_msgs.srv import AddObject
+from hector_worldmodel_msgs.msg import ObjectState
 from subprocess import call
 
 ### LineEdit Background colours
@@ -93,6 +93,7 @@ class RRTRqtPluginStatus(Plugin):
         # Shell_cmd message
         self.message = Shell_cmd()
         self.message.Machine = "rrt-cuda2"
+        #self.message.Machine = "rrt-devil"
 
 
 ######       DEF COUNTDOWN            ##########################################
@@ -405,7 +406,8 @@ class RRTRqtPluginStatus(Plugin):
 # save -> Skript ausfuehren
     def save(self):
       #ToDo: skript zum Speichern einfuegen!
-      
+      tmp = String("savegeotiff")
+      self._syscommand_pub.publish(tmp)
       self._widget.QR_Codes.append("<font color=\"#00ff00\">save</font>")
 
 
@@ -758,6 +760,7 @@ class RRTRqtPluginStatus(Plugin):
       #self._widget.ledt_my.setText("Add victim")
       #self._pub_victim_confirmed.publish(100)
       ##self._pub_victim_ok.publish(True)
+      self._pub_states.publish(4)
             
       try:
           add_victim = rospy.ServiceProxy('worldmodel/add_object', AddObject)
@@ -770,7 +773,7 @@ class RRTRqtPluginStatus(Plugin):
           req.object.info.support = 100
           req.object.pose.pose.position.x = 0.1
           req.object.pose.pose.position.y = 0
-          req.object.pose.pose.position.z = 0
+          req.object.pose.pose.position.z = 0.06
           req.object.pose.pose.orientation.w = 1
           req.object.state.state = ObjectState.CONFIRMED
 
@@ -797,9 +800,9 @@ class RRTRqtPluginStatus(Plugin):
         print("service call failed")
  
 
-# add Victim-Positionen to Textbox 
-#    def callback_victim(self, data):
-#      self.emit(SIGNAL("new_victim"), data.data)
+ #add Victim-Positionen to Textbox 
+    def callback_victim(self, data):
+      self.emit(SIGNAL("new_victim"), data.data)
 
 
     def on_ignore_victim_pressed(self):
@@ -858,21 +861,27 @@ class RRTRqtPluginStatus(Plugin):
     def on_add_qr_code_in_front_of_robot_pressed(self):
             
         try:
+
             add_qr_code = rospy.ServiceProxy('worldmodel/add_object', AddObject)
+            self._widget.QR_Codes.append("<font color=\"#0000ff\">service call</font>")
 	    
             req = AddObject._request_class()
-            req.object.header.frame_id = 'base_link'
+            self._widget.QR_Codes.append("<font color=\"#0000ff\">object anlegen</font>")
+            req.object.header.frame_id = 'map'
             req.object.header.stamp = rospy.Time(0)
             req.map_to_next_obstacle = True
             req.object.info.class_id = "qrcode"
+            self._widget.QR_Codes.append("<font color=\"#0000ff\">ID</font>")
             req.object.info.support = 100
             req.object.pose.pose.position.x = 0.1
             req.object.pose.pose.position.y = 0
             req.object.pose.pose.position.z = 0
             req.object.pose.pose.orientation.w = 1
             req.object.state.state = ObjectState.CONFIRMED
+            #self._widget.QR_Codes.append("<font color=\"#0000ff\">state"+req+"</font>")
 
             resp = add_qr_code(req)
+            self._widget.QR_Codes.append("<font color=\"#0000ff\">response</font>")
             
             status_msg = "added QR_Code, id = "
             status_msg += resp.object.info.object_id

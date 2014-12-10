@@ -15,7 +15,7 @@
   <depend package="rostopic"/>
   <depend package="rrt_cmd_vel_serial"/>
   <depend package="tf"/>
-  <depend package="hector_worldmodel_msgs"/>
+  <depend package="worldmodel_msgs"/>
   <depend package="rrt_msgs"/>
   
   <export>

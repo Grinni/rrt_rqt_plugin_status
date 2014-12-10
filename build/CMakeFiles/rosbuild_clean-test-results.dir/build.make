@@ -31,6 +31,9 @@ CMAKE_COMMAND = /usr/bin/cmake
 # The command to remove a file.
 RM = /usr/bin/cmake -E remove -f
 
+# The program to use to edit the cache.
+CMAKE_EDIT_COMMAND = /usr/bin/ccmake
+
 # The top-level source directory on which CMake was run.
 CMAKE_SOURCE_DIR = /home/rrt/ros_workspace/rrt_rqt_plugin_status
 
@@ -43,7 +46,7 @@ CMAKE_BINARY_DIR = /home/rrt/ros_workspace/rrt_rqt_plugin_status/build
 include CMakeFiles/rosbuild_clean-test-results.dir/progress.make
 
 CMakeFiles/rosbuild_clean-test-results:
-	if ! rm -rf /home/rrt/catkin_ws/build/test_results/rrt_rqt_plugin_status; then echo WARNING:\ failed\ to\ remove\ test-results\ directory ; fi
+	if ! rm -rf /home/rrt/catkin_ws/build/test_results/rrt_rqt_plugin_status; then echo "WARNING:\ failed\ to\ remove\ test-results\ directory"\; fi
 
 rosbuild_clean-test-results: CMakeFiles/rosbuild_clean-test-results
 rosbuild_clean-test-results: CMakeFiles/rosbuild_clean-test-results.dir/build.make

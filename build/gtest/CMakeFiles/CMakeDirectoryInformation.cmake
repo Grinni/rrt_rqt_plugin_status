@@ -11,12 +11,6 @@ SET(CMAKE_FORCE_UNIX_PATHS 1)
 # The C and CXX include file search paths:
 SET(CMAKE_C_INCLUDE_PATH
   "/home/rrt/ros_workspace/rrt_rqt_plugin_status/include"
-  "/home/rrt/ros_workspace/rrt_cmd_vel_serial/msg_gen/cpp/include"
-  "/home/rrt/ros_workspace/cereal_port/include"
-  "/home/rrt/ros_workspace/hector_worldmodel/worldmodel_msgs/msg_gen/cpp/include"
-  "/home/rrt/ros_workspace/hector_worldmodel/worldmodel_msgs/srv_gen/cpp/include"
-  "/home/rrt/ros_workspace/rrt_msgs/msg_gen/cpp/include"
-  "/opt/ros/hydro/include"
   "/usr/src/gtest/include"
   "/usr/src/gtest"
   )

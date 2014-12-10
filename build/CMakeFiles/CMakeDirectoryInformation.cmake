@@ -13,9 +13,9 @@ SET(CMAKE_C_INCLUDE_PATH
   "../include"
   "/home/rrt/ros_workspace/rrt_cmd_vel_serial/msg_gen/cpp/include"
   "/home/rrt/ros_workspace/cereal_port/include"
-  "/home/rrt/ros_workspace/hector_worldmodel/worldmodel_msgs/msg_gen/cpp/include"
-  "/home/rrt/ros_workspace/hector_worldmodel/worldmodel_msgs/srv_gen/cpp/include"
   "/home/rrt/ros_workspace/rrt_msgs/msg_gen/cpp/include"
+  "/home/rrt/catkin_ws/devel/include"
+  "/home/rrt/catkin_ws/src/hector_worldmodel/hector_worldmodel_msgs/include"
   "/opt/ros/hydro/include"
   )
 SET(CMAKE_CXX_INCLUDE_PATH ${CMAKE_C_INCLUDE_PATH})
