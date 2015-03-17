@@ -92,8 +92,8 @@ class RRTRqtPluginStatus(Plugin):
 
         # Shell_cmd message
         self.message = Shell_cmd()
-        self.message.Machine = "rrt-cuda2"
-        #self.message.Machine = "rrt-devil"
+        #self.message.Machine = "rrt-cuda2"
+        self.message.Machine = "rrt-devil"
 
 
 ######       DEF COUNTDOWN            ##########################################
@@ -130,7 +130,7 @@ class RRTRqtPluginStatus(Plugin):
         #self.connect(self, SIGNAL("new_value_accu2"), self.set_ledt_accu2)   
 
 # CO2
-        self._topic_name = 'co2'
+        self._topic_name = 'co2_value'
         self.message_class = Int16
         self._subscriber_co2 = rospy.Subscriber(
           self._topic_name, self.message_class, self.callback_co2)  
@@ -213,6 +213,9 @@ class RRTRqtPluginStatus(Plugin):
 
 # SAVE PushButton
         self._widget.savePushButton.pressed.connect(self.save)
+
+# SET MISSION PushButton
+        self._widget.setMission_pushButton.pressed.connect(self.setMission)
 
 # HOKUYO STARTEN
 #        self._widget.startHokuyoPushButton.pressed.connect(self.on_start_hokuyo)
@@ -411,6 +414,15 @@ class RRTRqtPluginStatus(Plugin):
       self._widget.QR_Codes.append("<font color=\"#00ff00\">save</font>")
 
 
+# set misstion name
+    def setMission(self):
+      #ToDo: ROS parameter aendern
+      tmp = self._widget.missionName_lineEdit.text()
+      self.message.Command = "rosparam set /mission " + tmp
+      self._shell_cmd_publisher.publish(self.message)
+      self._widget.QR_Codes.append("<font color=\"#00ff00\">set Mission</font>")
+
+
 # KILL LASER
     def on_kill_laser_pressed(self):
       self.message.Command = "rosnode kill /hokuyo"
@@ -604,7 +616,8 @@ class RRTRqtPluginStatus(Plugin):
     def on_start_octomap_mapping(self):
       if self.mappingOctomap_isRunning == False:
         self.mappingOctomap_isRunning = True
-        self.message.Command = "screen -mdS octo roslaunch octomap_server octomap_mapping.launch"
+        self.message.Command = "/home/rrt/autorun/octomap.sh"
+#        self.message.Command = "screen -mdS octo roslaunch octomap_server octomap_mapping.launch"
         #self.message.Command = "/home/rrt/autorun/octomap_mapping.sh"
         self._shell_cmd_publisher.publish(self.message)
       else:
@@ -760,7 +773,7 @@ class RRTRqtPluginStatus(Plugin):
       #self._widget.ledt_my.setText("Add victim")
       #self._pub_victim_confirmed.publish(100)
       ##self._pub_victim_ok.publish(True)
-      self._pub_states.publish(4)
+#      self._pub_states.publish(4)
             
       try:
           add_victim = rospy.ServiceProxy('worldmodel/add_object', AddObject)
