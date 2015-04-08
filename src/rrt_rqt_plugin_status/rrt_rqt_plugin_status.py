@@ -211,8 +211,12 @@ class RRTRqtPluginStatus(Plugin):
         self._widget.startManuell_button.pressed.connect(self.on_startManuell_pressed)
 
 
-# SAVE PushButton
+# AUTOSAVE PushButton
+        self.autosave_isRunning = False
         self._widget.savePushButton.pressed.connect(self.save)
+
+# COPY MAPS PushButton
+        self._widget.copyMapsPushButton.pressed.connect(self.copyMaps)
 
 # SET MISSION PushButton
         self._widget.setMission_pushButton.pressed.connect(self.setMission)
@@ -411,7 +415,32 @@ class RRTRqtPluginStatus(Plugin):
       #ToDo: skript zum Speichern einfuegen!
       tmp = String("savegeotiff")
       self._syscommand_pub.publish(tmp)
-      self._widget.QR_Codes.append("<font color=\"#00ff00\">save</font>")
+      time.sleep(1)
+#      self._widget.QR_Codes.append("<font color=\"#00ff00\">save</font>")
+
+#      self.message.Command = "rosparam set /hector_geotiff_node/geotiff_save_period 45.0 "
+#      self._shell_cmd_publisher.publish(self.message)
+#      self._widget.QR_Codes.append("<font color=\"#00ff00\">autosave ON</font>")
+
+      if self.autosave_isRunning == False:
+        self.autosave_isRunning = True
+        self.message.Command = "screen -dmS mapsaver rostopic pub /syscommand std_msgs/String 'savegeotiff' -r 0.02"
+        self._shell_cmd_publisher.publish(self.message)
+        self._widget.QR_Codes.append("<font color=\"#00ff00\">autosave ON</font>")
+      else:
+        self.autosave_isRunning = False
+        #stop autosave 
+        self.message.Command = "screen -X -S mapsaver quit"
+        self._shell_cmd_publisher.publish(self.message)
+        self._widget.QR_Codes.append("<font color=\"#00ff00\">autosave OFF</font>")
+
+
+
+#copy maps
+    def copyMaps(self):
+      #self.message.Command = "/home/autorun/copy_maps"
+      #self._shell_cmd_publisher.publish(self.message)
+      self._widget.QR_Codes.append("<font color=\"#00ff00\">Maps copied - haha</font>")
 
 
 # set misstion name
@@ -786,7 +815,7 @@ class RRTRqtPluginStatus(Plugin):
           req.object.info.support = 100
           req.object.pose.pose.position.x = 0.1
           req.object.pose.pose.position.y = 0
-          req.object.pose.pose.position.z = 0.06
+          req.object.pose.pose.position.z = 0.05
           req.object.pose.pose.orientation.w = 1
           req.object.state.state = ObjectState.CONFIRMED
 
@@ -843,7 +872,7 @@ class RRTRqtPluginStatus(Plugin):
             req.object.info.support = 100
             req.object.pose.pose.position.x = 0.1
             req.object.pose.pose.position.y = 0
-            req.object.pose.pose.position.z = 0
+            req.object.pose.pose.position.z = 0.05
             req.object.pose.pose.orientation.w = 1
             req.object.state.state = ObjectState.CONFIRMED
 
@@ -876,25 +905,25 @@ class RRTRqtPluginStatus(Plugin):
         try:
 
             add_qr_code = rospy.ServiceProxy('worldmodel/add_object', AddObject)
-            self._widget.QR_Codes.append("<font color=\"#0000ff\">service call</font>")
+#            self._widget.QR_Codes.append("<font color=\"#0000ff\">service call</font>")
 	    
             req = AddObject._request_class()
-            self._widget.QR_Codes.append("<font color=\"#0000ff\">object anlegen</font>")
+#            self._widget.QR_Codes.append("<font color=\"#0000ff\">object anlegen</font>")
             req.object.header.frame_id = 'map'
             req.object.header.stamp = rospy.Time(0)
             req.map_to_next_obstacle = True
             req.object.info.class_id = "qrcode"
-            self._widget.QR_Codes.append("<font color=\"#0000ff\">ID</font>")
+#            self._widget.QR_Codes.append("<font color=\"#0000ff\">ID</font>")
             req.object.info.support = 100
             req.object.pose.pose.position.x = 0.1
             req.object.pose.pose.position.y = 0
-            req.object.pose.pose.position.z = 0
+            req.object.pose.pose.position.z = 0.05
             req.object.pose.pose.orientation.w = 1
             req.object.state.state = ObjectState.CONFIRMED
             #self._widget.QR_Codes.append("<font color=\"#0000ff\">state"+req+"</font>")
 
             resp = add_qr_code(req)
-            self._widget.QR_Codes.append("<font color=\"#0000ff\">response</font>")
+#            self._widget.QR_Codes.append("<font color=\"#0000ff\">response</font>")
             
             status_msg = "added QR_Code, id = "
             status_msg += resp.object.info.object_id

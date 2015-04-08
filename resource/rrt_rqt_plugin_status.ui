@@ -326,7 +326,10 @@ p, li { white-space: pre-wrap; }
      </font>
     </property>
     <property name="text">
-     <string>save</string>
+     <string>autosave</string>
+    </property>
+    <property name="checkable">
+     <bool>true</bool>
     </property>
    </widget>
   </widget>
@@ -806,6 +809,24 @@ p, li { white-space: pre-wrap; }
    </property>
    <property name="text">
     <string>set</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="uploadPushButton">
+   <property name="geometry">
+    <rect>
+     <x>330</x>
+     <y>270</y>
+     <width>111</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="font">
+    <font>
+     <family>Ubuntu</family>
+    </font>
+   </property>
+   <property name="text">
+    <string>upload maps</string>
    </property>
   </widget>
  </widget>
