@@ -215,9 +215,6 @@ class RRTRqtPluginStatus(Plugin):
         self.autosave_isRunning = False
         self._widget.savePushButton.pressed.connect(self.save)
 
-# COPY MAPS PushButton
-        self._widget.copyMapsPushButton.pressed.connect(self.copyMaps)
-
 # SET MISSION PushButton
         self._widget.setMission_pushButton.pressed.connect(self.setMission)
 
@@ -410,7 +407,7 @@ class RRTRqtPluginStatus(Plugin):
 ######       BUTTONS          ##########################################
 
 
-# save -> Skript ausfuehren
+# save 
     def save(self):
       #ToDo: skript zum Speichern einfuegen!
       tmp = String("savegeotiff")
@@ -434,13 +431,6 @@ class RRTRqtPluginStatus(Plugin):
         self._shell_cmd_publisher.publish(self.message)
         self._widget.QR_Codes.append("<font color=\"#00ff00\">autosave OFF</font>")
 
-
-
-#copy maps
-    def copyMaps(self):
-      #self.message.Command = "/home/autorun/copy_maps"
-      #self._shell_cmd_publisher.publish(self.message)
-      self._widget.QR_Codes.append("<font color=\"#00ff00\">Maps copied - haha</font>")
 
 
 # set misstion name

@@ -811,24 +811,6 @@ p, li { white-space: pre-wrap; }
     <string>set</string>
    </property>
   </widget>
-  <widget class="QPushButton" name="uploadPushButton">
-   <property name="geometry">
-    <rect>
-     <x>330</x>
-     <y>270</y>
-     <width>111</width>
-     <height>27</height>
-    </rect>
-   </property>
-   <property name="font">
-    <font>
-     <family>Ubuntu</family>
-    </font>
-   </property>
-   <property name="text">
-    <string>upload maps</string>
-   </property>
-  </widget>
  </widget>
  <resources/>
  <connections/>

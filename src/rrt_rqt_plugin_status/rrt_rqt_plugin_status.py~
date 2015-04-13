@@ -410,7 +410,7 @@ class RRTRqtPluginStatus(Plugin):
 ######       BUTTONS          ##########################################
 
 
-# save -> Skript ausfuehren
+# save 
     def save(self):
       #ToDo: skript zum Speichern einfuegen!
       tmp = String("savegeotiff")
@@ -436,11 +436,11 @@ class RRTRqtPluginStatus(Plugin):
 
 
 
-#copy maps
+#copy maps -> Skript ausfuehren
     def copyMaps(self):
-      self.message.Command = "/home/autorun/copy_maps"
-      self._shell_cmd_publisher.publish(self.message)
-      self._widget.QR_Codes.append("<font color=\"#00ff00\">Maps copied</font>")
+      #self.message.Command = "/home/autorun/copy_maps"
+      #self._shell_cmd_publisher.publish(self.message)
+      self._widget.QR_Codes.append("<font color=\"#00ff00\">Maps copied - haha</font>")
 
 
 # set misstion name
