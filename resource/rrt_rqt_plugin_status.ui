@@ -664,7 +664,7 @@ p, li { white-space: pre-wrap; }
      </rect>
     </property>
     <property name="text">
-     <string>US:</string>
+     <string>Temp:</string>
     </property>
    </widget>
    <widget class="QLineEdit" name="ledt_co2">
@@ -677,7 +677,7 @@ p, li { white-space: pre-wrap; }
      </rect>
     </property>
    </widget>
-   <widget class="QLineEdit" name="ledt_US">
+   <widget class="QLineEdit" name="ledt_Temp">
     <property name="geometry">
      <rect>
       <x>60</x>

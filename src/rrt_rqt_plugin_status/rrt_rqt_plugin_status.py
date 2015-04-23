@@ -12,6 +12,7 @@ from python_qt_binding.QtCore import *
 from python_qt_binding.QtGui import *
 from std_msgs.msg import String
 from std_msgs.msg import Int16
+from std_msgs.msg import Float32
 from sensor_msgs.msg import JointState
 from sensor_msgs.msg import Imu
 from sensor_msgs.msg import RegionOfInterest
@@ -136,12 +137,12 @@ class RRTRqtPluginStatus(Plugin):
           self._topic_name, self.message_class, self.callback_co2)  
         self.connect(self, SIGNAL("new_value_co2"), self.set_ledt_co2)
 
-# US - Ultraschall
-        self._topic_name = 'ultrasonic'
-        self.message_class = Int16
+# TEMP - Temperatur
+        self._topic_name = 'thermocam/max_temperature'
+        self.message_class = Float32
         self._subscriber_US = rospy.Subscriber(
-          self._topic_name, self.message_class, self.callback_US)  
-        self.connect(self, SIGNAL("new_value_US"), self.set_ledt_US)
+          self._topic_name, self.message_class, self.callback_Temp)  
+        self.connect(self, SIGNAL("new_value_Temp"), self.set_ledt_Temp)
 
 
 
@@ -388,19 +389,19 @@ class RRTRqtPluginStatus(Plugin):
       self._widget.ledt_co2.setText("%.2f" % float(value) +" ppm")
 
 
-#US
-    def callback_US(self, data):
-      self.emit(SIGNAL("new_value_US"), data.data)
+#TEMP
+    def callback_Temp(self, data):
+      self.emit(SIGNAL("new_value_Temp"), data.data)
 
-    def set_ledt_US(self, value):
-      value -= 15;
-      self._widget.ledt_US.setText("%.2f" % float(value) +" cm")
-      if value < 18:
-        self._widget.ledt_US.setStyleSheet(LEDT_COLOUR_RED)
-      elif value < 28:
-        self._widget.ledt_US.setStyleSheet(LEDT_COLOUR_ORANGE)
-      elif value >= 28:
-        self._widget.ledt_US.setStyleSheet(LEDT_COLOUR_GREEN)
+    def set_ledt_Temp(self, value):
+#      value -= 15;
+      self._widget.ledt_Temp.setText("%.2f" % float(value) +" cm")
+#      if value < 18:
+#        self._widget.ledt_US.setStyleSheet(LEDT_COLOUR_RED)
+#      elif value < 28:
+#        self._widget.ledt_US.setStyleSheet(LEDT_COLOUR_ORANGE)
+#      elif value >= 28:
+#        self._widget.ledt_US.setStyleSheet(LEDT_COLOUR_GREEN)
 
 
 
